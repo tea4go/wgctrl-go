@@ -97,6 +97,18 @@ func TestClientConfigureDeviceOK(t *testing.T) {
 			req: "set=1\nprivate_key=0000000000000000000000000000000000000000000000000000000000000000\n\n",
 		},
 		{
+			name: "ok, allowed IP operations",
+			cfg: wgtypes.Config{Peers: []wgtypes.PeerConfig{{
+				AllowedIPs: []net.IPNet{wgtest.MustCIDR("10.0.0.0/24")},
+				AllowedIPOperations: []wgtypes.AllowedIPConfig{
+					{IPNet: wgtest.MustCIDR("10.0.1.0/24"), Operation: wgtypes.AllowedIPSet},
+					{IPNet: wgtest.MustCIDR("10.0.2.0/24"), Operation: wgtypes.AllowedIPAdd},
+					{IPNet: wgtest.MustCIDR("10.0.3.0/24"), Operation: wgtypes.AllowedIPRemove},
+				},
+			}}},
+			req: "set=1\npublic_key=0000000000000000000000000000000000000000000000000000000000000000\nallowed_ip=10.0.0.0/24\nallowed_ip=10.0.1.0/24\nallowed_ip=10.0.2.0/24\nallowed_ip=-10.0.3.0/24\n\n",
+		},
+		{
 			name: "ok, all",
 			cfg: wgtypes.Config{
 				PrivateKey:   keyPtr(wgtest.MustHexKey("e84b5a6d2717c1003a13b431570353dbaca9146cf150c5f8575680feba52027a")),

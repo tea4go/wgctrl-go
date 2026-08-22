@@ -340,8 +340,12 @@ func parseAllowedIP(aip nv.List) net.IPNet {
 	}
 }
 
-func unparseAllowedIP(aip net.IPNet) nv.List {
+func unparseAllowedIP(aip net.IPNet, operation wgtypes.AllowedIPOperation) nv.List {
 	m := nv.List{}
+
+	if operation == wgtypes.AllowedIPRemove {
+		m["flags"] = uint64(1)
+	}
 
 	ones, _ := aip.Mask.Size()
 	m["cidr"] = uint64(ones)
@@ -386,6 +390,7 @@ func parsePeer(v nv.List) wgtypes.Peer {
 	if v, ok := v["preshared-key"]; ok {
 		psk := (*wgtypes.Key)(v.([]byte))
 		p.PresharedKey = *psk
+		p.HasPresharedKey = true
 	}
 
 	if v, ok := v["last-handshake-time"]; ok {
@@ -394,10 +399,12 @@ func parsePeer(v nv.List) wgtypes.Peer {
 
 	if v, ok := v["endpoint"]; ok {
 		p.Endpoint = parseEndpoint(v.([]byte))
+		p.HasEndpoint = true
 	}
 
 	if v, ok := v["persistent-keepalive-interval"]; ok {
 		p.PersistentKeepaliveInterval = time.Second * time.Duration(v.(uint64))
+		p.HasPersistentKeepaliveInterval = true
 	}
 
 	if v, ok := v["rx-bytes"]; ok {
@@ -432,19 +439,23 @@ func parseDevice(data []byte) (*wgtypes.Device, error) {
 	if v, ok := m["public-key"]; ok {
 		pk := (*wgtypes.Key)(v.([]byte))
 		dev.PublicKey = *pk
+		dev.HasPublicKey = true
 	}
 
 	if v, ok := m["private-key"]; ok {
 		sk := (*wgtypes.Key)(v.([]byte))
 		dev.PrivateKey = *sk
+		dev.HasPrivateKey = true
 	}
 
 	if v, ok := m["user-cookie"]; ok {
 		dev.FirewallMark = int(v.(uint64))
+		dev.HasFirewallMark = true
 	}
 
 	if v, ok := m["listen-port"]; ok {
 		dev.ListenPort = int(v.(uint64))
+		dev.HasListenPort = true
 	}
 
 	if v, ok := m["peers"]; ok {
@@ -484,11 +495,14 @@ func unparsePeerConfig(cfg wgtypes.PeerConfig) nv.List {
 		m["remove"] = true
 	}
 
-	if cfg.AllowedIPs != nil {
+	if cfg.AllowedIPs != nil || cfg.AllowedIPOperations != nil {
 		aips := []nv.List{}
 
 		for _, aip := range cfg.AllowedIPs {
-			aips = append(aips, unparseAllowedIP(aip))
+			aips = append(aips, unparseAllowedIP(aip, wgtypes.AllowedIPSet))
+		}
+		for _, aip := range cfg.AllowedIPOperations {
+			aips = append(aips, unparseAllowedIP(aip.IPNet, aip.Operation))
 		}
 
 		m["allowed-ips"] = aips

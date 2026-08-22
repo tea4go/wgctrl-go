@@ -224,21 +224,28 @@ func TestClientDeviceBasic(t *testing.T) {
 	}
 
 	want := &wgtypes.Device{
-		Name:         device,
-		Type:         wgtypes.OpenBSDKernel,
-		PrivateKey:   priv,
-		PublicKey:    pub,
-		ListenPort:   8080,
-		FirewallMark: 1,
+		Name:            device,
+		Type:            wgtypes.OpenBSDKernel,
+		HasPrivateKey:   true,
+		HasPublicKey:    true,
+		HasListenPort:   true,
+		HasFirewallMark: true,
+		PrivateKey:      priv,
+		PublicKey:       pub,
+		ListenPort:      8080,
+		FirewallMark:    1,
 		Peers: []wgtypes.Peer{
 			{
-				PublicKey:                   peerA,
-				PresharedKey:                psk,
-				Endpoint:                    wgtest.MustUDPAddr("192.0.2.0:1024"),
-				PersistentKeepaliveInterval: 60 * time.Second,
-				ReceiveBytes:                2,
-				TransmitBytes:               1,
-				LastHandshakeTime:           time.Unix(1, 2),
+				HasPresharedKey:                true,
+				HasEndpoint:                    true,
+				HasPersistentKeepaliveInterval: true,
+				PublicKey:                      peerA,
+				PresharedKey:                   psk,
+				Endpoint:                       wgtest.MustUDPAddr("192.0.2.0:1024"),
+				PersistentKeepaliveInterval:    60 * time.Second,
+				ReceiveBytes:                   2,
+				TransmitBytes:                  1,
+				LastHandshakeTime:              time.Unix(1, 2),
 				AllowedIPs: []net.IPNet{
 					wgtest.MustCIDR("192.168.1.0/24"),
 					wgtest.MustCIDR("fd00::/64"),
@@ -246,9 +253,10 @@ func TestClientDeviceBasic(t *testing.T) {
 				ProtocolVersion: 1,
 			},
 			{
-				PublicKey:  peerB,
-				Endpoint:   wgtest.MustUDPAddr("[::1]:2048"),
-				AllowedIPs: []net.IPNet{wgtest.MustCIDR("2001:db8::1/128")},
+				HasEndpoint: true,
+				PublicKey:   peerB,
+				Endpoint:    wgtest.MustUDPAddr("[::1]:2048"),
+				AllowedIPs:  []net.IPNet{wgtest.MustCIDR("2001:db8::1/128")},
 			},
 			{
 				PublicKey:  peerC,
@@ -259,6 +267,32 @@ func TestClientDeviceBasic(t *testing.T) {
 
 	if diff := cmp.Diff(want, d); diff != "" {
 		t.Fatalf("unexpected device (-want +got):\n%s", diff)
+	}
+}
+
+func TestParseDeviceFlagsControlPresence(t *testing.T) {
+	ifio := &wgh.WGInterfaceIO{
+		Private: wgtest.MustPrivateKey(),
+		Public:  wgtest.MustPublicKey(),
+		Port:    8080,
+		Rtable:  1,
+	}
+
+	d, err := parseDevice("wg0", ifio)
+	if err != nil {
+		t.Fatalf("failed to parse device: %v", err)
+	}
+	if d.HasPrivateKey || d.HasPublicKey || d.HasListenPort || d.HasFirewallMark {
+		t.Fatalf("device fields marked present without flags: %+v", d)
+	}
+
+	p := parsePeer(&wgh.WGPeerIO{
+		Psk:      wgtest.MustPresharedKey(),
+		Pka:      60,
+		Endpoint: [28]byte{1: unix.AF_INET},
+	})
+	if p.HasPresharedKey || p.HasPersistentKeepaliveInterval || p.HasEndpoint {
+		t.Fatalf("peer fields marked present without flags: %+v", p)
 	}
 }
 

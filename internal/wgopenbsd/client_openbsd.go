@@ -169,18 +169,22 @@ func parseDevice(name string, ifio *wgh.WGInterfaceIO) (*wgtypes.Device, error) 
 
 	if ifio.Flags&wgh.WG_INTERFACE_HAS_PRIVATE != 0 {
 		d.PrivateKey = wgtypes.Key(ifio.Private)
+		d.HasPrivateKey = true
 	}
 
 	if ifio.Flags&wgh.WG_INTERFACE_HAS_PUBLIC != 0 {
 		d.PublicKey = wgtypes.Key(ifio.Public)
+		d.HasPublicKey = true
 	}
 
 	if ifio.Flags&wgh.WG_INTERFACE_HAS_PORT != 0 {
 		d.ListenPort = int(ifio.Port)
+		d.HasListenPort = true
 	}
 
 	if ifio.Flags&wgh.WG_INTERFACE_HAS_RTABLE != 0 {
 		d.FirewallMark = int(ifio.Rtable)
+		d.HasFirewallMark = true
 	}
 
 	d.Peers = make([]wgtypes.Peer, 0, ifio.Peers_count)
@@ -269,14 +273,17 @@ func parsePeer(pio *wgh.WGPeerIO) wgtypes.Peer {
 
 	if pio.Flags&wgh.WG_PEER_HAS_PSK != 0 {
 		p.PresharedKey = wgtypes.Key(pio.Psk)
+		p.HasPresharedKey = true
 	}
 
 	if pio.Flags&wgh.WG_PEER_HAS_PKA != 0 {
 		p.PersistentKeepaliveInterval = time.Duration(pio.Pka) * time.Second
+		p.HasPersistentKeepaliveInterval = true
 	}
 
 	if pio.Flags&wgh.WG_PEER_HAS_ENDPOINT != 0 {
 		p.Endpoint = parseEndpoint(pio.Endpoint)
+		p.HasEndpoint = true
 	}
 
 	return p

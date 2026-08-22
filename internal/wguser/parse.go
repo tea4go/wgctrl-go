@@ -90,6 +90,7 @@ func (dp *deviceParser) Device() (*wgtypes.Device, error) {
 
 	// Compute remaining fields of the Device now that all parsing is done.
 	dp.d.PublicKey = dp.d.PrivateKey.PublicKey()
+	dp.d.HasPublicKey = dp.d.HasPrivateKey
 
 	return &dp.d, nil
 }
@@ -128,10 +129,13 @@ func (dp *deviceParser) Parse(key, value string) {
 	switch key {
 	case "private_key":
 		dp.d.PrivateKey = dp.parseKey(value)
+		dp.d.HasPrivateKey = true
 	case "listen_port":
 		dp.d.ListenPort = dp.parseInt(value)
+		dp.d.HasListenPort = true
 	case "fwmark":
 		dp.d.FirewallMark = dp.parseInt(value)
+		dp.d.HasFirewallMark = true
 	}
 }
 
@@ -146,8 +150,10 @@ func (dp *deviceParser) peerParse(key, value string) {
 	switch key {
 	case "preshared_key":
 		p.PresharedKey = dp.parseKey(value)
+		p.HasPresharedKey = true
 	case "endpoint":
 		p.Endpoint = dp.parseAddr(value)
+		p.HasEndpoint = true
 	case "last_handshake_time_sec":
 		dp.hsSec = dp.parseInt(value)
 	case "last_handshake_time_nsec":
@@ -166,6 +172,7 @@ func (dp *deviceParser) peerParse(key, value string) {
 		p.ReceiveBytes = dp.parseInt64(value)
 	case "persistent_keepalive_interval":
 		p.PersistentKeepaliveInterval = time.Duration(dp.parseInt(value)) * time.Second
+		p.HasPersistentKeepaliveInterval = true
 	case "allowed_ip":
 		cidr := dp.parseCIDR(value)
 		if cidr != nil {

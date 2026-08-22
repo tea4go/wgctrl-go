@@ -97,6 +97,14 @@ func writeConfig(w io.Writer, cfg wgtypes.Config) {
 		for _, ip := range p.AllowedIPs {
 			fmt.Fprintf(w, "allowed_ip=%s\n", ip.String())
 		}
+
+		for _, aip := range p.AllowedIPOperations {
+			prefix := ""
+			if aip.Operation == wgtypes.AllowedIPRemove {
+				prefix = "-"
+			}
+			fmt.Fprintf(w, "allowed_ip=%s%s\n", prefix, aip.IPNet.String())
+		}
 	}
 }
 
