@@ -72,7 +72,7 @@ func shouldBatch(cfg wgtypes.Config) bool {
 
 	var ips int
 	for _, p := range cfg.Peers {
-		ips += len(p.AllowedIPs)
+		ips += len(p.AllowedIPs) + len(p.AllowedIPOperations)
 	}
 
 	return ips > ipBatchChunk
@@ -106,6 +106,7 @@ func buildBatches(cfg wgtypes.Config) []wgtypes.Config {
 				// IPs all fit within a batch; we are done.
 				tmp = make([]net.IPNet, len(p.AllowedIPs))
 				copy(tmp, p.AllowedIPs)
+				p.AllowedIPs = nil
 				done = true
 			} else {
 				// IPs are larger than a single batch, copy a batch out and
@@ -118,9 +119,21 @@ func buildBatches(cfg wgtypes.Config) []wgtypes.Config {
 				if len(p.AllowedIPs) == 0 {
 					// IPs ended on a batch boundary; no more IPs left so end
 					// iteration after this loop.
-					done = true
+					p.AllowedIPs = nil
+					done = len(p.AllowedIPOperations) == 0
 				}
 			}
+
+			operations := []wgtypes.AllowedIPConfig(nil)
+			remaining := ipBatchChunk - len(tmp)
+			if remaining > len(p.AllowedIPOperations) {
+				remaining = len(p.AllowedIPOperations)
+			}
+			if remaining > 0 {
+				operations = append(operations, p.AllowedIPOperations[:remaining]...)
+				p.AllowedIPOperations = p.AllowedIPOperations[remaining:]
+			}
+			done = len(p.AllowedIPs) == 0 && len(p.AllowedIPOperations) == 0
 
 			pcfg := wgtypes.PeerConfig{
 				// PublicKey denotes the peer and must be present.
@@ -135,8 +148,9 @@ func buildBatches(cfg wgtypes.Config) []wgtypes.Config {
 				// IPs, but just in case, add this to every peer's message.
 				Remove: p.Remove,
 
-				// The IPs for this chunk.
-				AllowedIPs: tmp,
+				// The IPs and operations for this chunk.
+				AllowedIPs:          tmp,
+				AllowedIPOperations: operations,
 			}
 
 			// Only pass certain fields on the first occurrence of a peer, so
@@ -202,8 +216,8 @@ func encodePeer(p wgtypes.PeerConfig) func(ae *netlink.AttributeEncoder) error {
 		}
 
 		// Only apply allowed IPs if necessary.
-		if len(p.AllowedIPs) > 0 {
-			ae.Nested(unix.WGPEER_A_ALLOWEDIPS, encodeAllowedIPs(p.AllowedIPs))
+		if len(p.AllowedIPs) > 0 || len(p.AllowedIPOperations) > 0 {
+			ae.Nested(unix.WGPEER_A_ALLOWEDIPS, encodeAllowedIPs(p.AllowedIPs, p.AllowedIPOperations))
 		}
 
 		return nil
@@ -246,34 +260,51 @@ func encodeSockaddr(endpoint net.UDPAddr) func() ([]byte, error) {
 	}
 }
 
+const (
+	// x/sys/unix does not expose the newer AllowedIP attributes yet.
+	wgAllowedIPAttributeFlags = 4
+	wgAllowedIPFlagRemoveMe   = 1 << 0
+)
+
 // encodeAllowedIPs returns a function to encode allowed IP nested attributes.
-func encodeAllowedIPs(ipns []net.IPNet) func(ae *netlink.AttributeEncoder) error {
+func encodeAllowedIPs(ipns []net.IPNet, operations ...[]wgtypes.AllowedIPConfig) func(ae *netlink.AttributeEncoder) error {
 	return func(ae *netlink.AttributeEncoder) error {
-		for i, ipn := range ipns {
-			if !isValidIP(ipn.IP) {
-				return fmt.Errorf("wglinux: invalid allowed IP: %s", ipn.IP.String())
-			}
-
-			family := uint16(unix.AF_INET6)
-			if !isIPv6(ipn.IP) {
-				// Make sure address is 4 bytes if IPv4.
-				family = unix.AF_INET
-				ipn.IP = ipn.IP.To4()
-			}
-
-			// Netlink arrays use type as an array index.
-			ae.Nested(uint16(i), func(nae *netlink.AttributeEncoder) error {
-				nae.Uint16(unix.WGALLOWEDIP_A_FAMILY, family)
-				nae.Bytes(unix.WGALLOWEDIP_A_IPADDR, ipn.IP)
-
-				ones, _ := ipn.Mask.Size()
-				nae.Uint8(unix.WGALLOWEDIP_A_CIDR_MASK, uint8(ones))
-				return nil
-			})
+		all := make([]wgtypes.AllowedIPConfig, 0, len(ipns))
+		for _, ipn := range ipns {
+			all = append(all, wgtypes.AllowedIPConfig{IPNet: ipn, Operation: wgtypes.AllowedIPAdd})
 		}
-
+		if len(operations) > 0 {
+			all = append(all, operations[0]...)
+		}
+		for i, entry := range all {
+			if err := encodeAllowedIP(ae, i, entry.IPNet, entry.Operation == wgtypes.AllowedIPRemove); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
+}
+
+func encodeAllowedIP(ae *netlink.AttributeEncoder, i int, ipn net.IPNet, remove bool) error {
+	if !isValidIP(ipn.IP) {
+		return fmt.Errorf("wglinux: invalid allowed IP: %s", ipn.IP.String())
+	}
+	family := uint16(unix.AF_INET6)
+	if !isIPv6(ipn.IP) {
+		family = unix.AF_INET
+		ipn.IP = ipn.IP.To4()
+	}
+	ae.Nested(uint16(i), func(nae *netlink.AttributeEncoder) error {
+		nae.Uint16(unix.WGALLOWEDIP_A_FAMILY, family)
+		nae.Bytes(unix.WGALLOWEDIP_A_IPADDR, ipn.IP)
+		ones, _ := ipn.Mask.Size()
+		nae.Uint8(unix.WGALLOWEDIP_A_CIDR_MASK, uint8(ones))
+		if remove {
+			nae.Uint32(wgAllowedIPAttributeFlags, wgAllowedIPFlagRemoveMe)
+		}
+		return nil
+	})
+	return nil
 }
 
 // isValidIP determines if IP is a valid IPv4 or IPv6 address.

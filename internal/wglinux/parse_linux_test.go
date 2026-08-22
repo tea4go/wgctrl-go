@@ -160,6 +160,72 @@ func TestLinuxClientDevicesOK(t *testing.T) {
 			},
 		},
 		{
+			name: "zero values are present",
+			msgs: [][]genetlink.Message{{{
+				Data: m([]netlink.Attribute{
+					{
+						Type: unix.WGDEVICE_A_IFNAME,
+						Data: nlenc.Bytes(okName),
+					},
+					{
+						Type: unix.WGDEVICE_A_PRIVATE_KEY,
+						Data: make([]byte, wgtypes.KeyLen),
+					},
+					{
+						Type: unix.WGDEVICE_A_PUBLIC_KEY,
+						Data: make([]byte, wgtypes.KeyLen),
+					},
+					{
+						Type: unix.WGDEVICE_A_LISTEN_PORT,
+						Data: nlenc.Uint16Bytes(0),
+					},
+					{
+						Type: unix.WGDEVICE_A_FWMARK,
+						Data: nlenc.Uint32Bytes(0),
+					},
+					{
+						Type: unix.WGDEVICE_A_PEERS,
+						Data: m(netlink.Attribute{
+							Type: 0,
+							Data: m([]netlink.Attribute{
+								{
+									Type: unix.WGPEER_A_PUBLIC_KEY,
+									Data: testKey[:],
+								},
+								{
+									Type: unix.WGPEER_A_PRESHARED_KEY,
+									Data: make([]byte, wgtypes.KeyLen),
+								},
+								{
+									Type: unix.WGPEER_A_ENDPOINT,
+									Data: (*(*[unix.SizeofSockaddrInet4]byte)(unsafe.Pointer(&unix.RawSockaddrInet4{})))[:],
+								},
+								{
+									Type: unix.WGPEER_A_PERSISTENT_KEEPALIVE_INTERVAL,
+									Data: nlenc.Uint16Bytes(0),
+								},
+							}...),
+						}),
+					},
+				}...),
+			}}},
+			devices: []*wgtypes.Device{{
+				Name:            okName,
+				Type:            wgtypes.LinuxKernel,
+				HasPrivateKey:   true,
+				HasPublicKey:    true,
+				HasListenPort:   true,
+				HasFirewallMark: true,
+				Peers: []wgtypes.Peer{{
+					PublicKey:                      testKey,
+					HasPresharedKey:                true,
+					Endpoint:                       &net.UDPAddr{IP: net.IPv4zero},
+					HasEndpoint:                    true,
+					HasPersistentKeepaliveInterval: true,
+				}},
+			}},
+		},
+		{
 			name: "complete",
 			msgs: [][]genetlink.Message{{{
 				Data: m([]netlink.Attribute{
@@ -268,24 +334,31 @@ func TestLinuxClientDevicesOK(t *testing.T) {
 			}}},
 			devices: []*wgtypes.Device{
 				{
-					Name:         okName,
-					Type:         wgtypes.LinuxKernel,
-					PrivateKey:   testKey,
-					PublicKey:    testKey,
-					ListenPort:   5555,
-					FirewallMark: 0xff,
+					Name:            okName,
+					Type:            wgtypes.LinuxKernel,
+					PrivateKey:      testKey,
+					HasPrivateKey:   true,
+					PublicKey:       testKey,
+					HasPublicKey:    true,
+					ListenPort:      5555,
+					HasListenPort:   true,
+					FirewallMark:    0xff,
+					HasFirewallMark: true,
 					Peers: []wgtypes.Peer{
 						{
-							PublicKey:    testKey,
-							PresharedKey: testKey,
+							PublicKey:       testKey,
+							PresharedKey:    testKey,
+							HasPresharedKey: true,
 							Endpoint: &net.UDPAddr{
 								IP:   net.IPv4(192, 168, 1, 1),
 								Port: 1111,
 							},
-							PersistentKeepaliveInterval: 10 * time.Second,
-							LastHandshakeTime:           time.Unix(10, 20),
-							ReceiveBytes:                100,
-							TransmitBytes:               200,
+							HasEndpoint:                    true,
+							PersistentKeepaliveInterval:    10 * time.Second,
+							HasPersistentKeepaliveInterval: true,
+							LastHandshakeTime:              time.Unix(10, 20),
+							ReceiveBytes:                   100,
+							TransmitBytes:                  200,
 							AllowedIPs: []net.IPNet{
 								wgtest.MustCIDR("192.168.1.10/32"),
 								wgtest.MustCIDR("fd00::1/128"),
@@ -298,6 +371,7 @@ func TestLinuxClientDevicesOK(t *testing.T) {
 								IP:   net.ParseIP("fe80::1"),
 								Port: 2222,
 							},
+							HasEndpoint: true,
 						},
 					},
 				},
@@ -421,9 +495,10 @@ func TestLinuxClientDevicesOK(t *testing.T) {
 			}},
 			devices: []*wgtypes.Device{
 				{
-					Name:       okName,
-					Type:       wgtypes.LinuxKernel,
-					PrivateKey: testKey,
+					Name:          okName,
+					Type:          wgtypes.LinuxKernel,
+					PrivateKey:    testKey,
+					HasPrivateKey: true,
 					Peers: []wgtypes.Peer{
 						{
 							PublicKey: keyA,

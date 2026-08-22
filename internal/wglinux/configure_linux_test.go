@@ -9,6 +9,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/mdlayher/genetlink"
 	"github.com/mdlayher/genetlink/genltest"
 	"github.com/mdlayher/netlink"
@@ -55,6 +56,45 @@ func TestLinuxClientConfigureDevice(t *testing.T) {
 			name: "ok, none",
 			attrs: []netlink.Attribute{
 				nameAttr,
+			},
+			ok: true,
+		},
+		{
+			name: "allowed IP operations",
+			cfg: wgtypes.Config{Peers: []wgtypes.PeerConfig{{
+				PublicKey: wgtest.MustHexKey("b85996fecc9c7f1fc6d2572a76eda11d59bcd20be8e543b15ce4bd85a8e75a33"),
+				AllowedIPs: []net.IPNet{
+					wgtest.MustCIDR("192.0.2.1/32"),
+				},
+				AllowedIPOperations: []wgtypes.AllowedIPConfig{
+					{IPNet: wgtest.MustCIDR("192.0.2.2/32"), Operation: wgtypes.AllowedIPSet},
+					{IPNet: wgtest.MustCIDR("192.0.2.3/32"), Operation: wgtypes.AllowedIPAdd},
+					{IPNet: wgtest.MustCIDR("192.0.2.4/32"), Operation: wgtypes.AllowedIPRemove},
+				},
+			}}},
+			attrs: []netlink.Attribute{
+				nameAttr,
+				{
+					Type: netlink.Nested | unix.WGDEVICE_A_PEERS,
+					Data: m(netlink.Attribute{
+						Type: netlink.Nested,
+						Data: m([]netlink.Attribute{
+							{
+								Type: unix.WGPEER_A_PUBLIC_KEY,
+								Data: keyBytes("b85996fecc9c7f1fc6d2572a76eda11d59bcd20be8e543b15ce4bd85a8e75a33"),
+							},
+							{
+								Type: netlink.Nested | unix.WGPEER_A_ALLOWEDIPS,
+								Data: mustAllowedIPOperations([]wgtypes.AllowedIPConfig{
+									{IPNet: wgtest.MustCIDR("192.0.2.1/32"), Operation: wgtypes.AllowedIPAdd},
+									{IPNet: wgtest.MustCIDR("192.0.2.2/32"), Operation: wgtypes.AllowedIPSet},
+									{IPNet: wgtest.MustCIDR("192.0.2.3/32"), Operation: wgtypes.AllowedIPAdd},
+									{IPNet: wgtest.MustCIDR("192.0.2.4/32"), Operation: wgtypes.AllowedIPRemove},
+								}),
+							},
+						}...),
+					}),
+				},
 			},
 			ok: true,
 		},
@@ -506,6 +546,161 @@ func TestLinuxClientConfigureDeviceLargePeerIPChunks(t *testing.T) {
 	if diff := diffAttrs(want, allAttrs); diff != "" {
 		t.Fatalf("unexpected final attributes (-want +got):\n%s", diff)
 	}
+}
+
+func TestLinuxClientConfigureDeviceLargeAllowedIPOperationChunks(t *testing.T) {
+	peer := wgtest.MustPublicKey()
+	ips := generateIPs(ipBatchChunk + 2)
+	operations := make([]wgtypes.AllowedIPConfig, len(ips))
+	for i, ipn := range ips {
+		operation := wgtypes.AllowedIPAdd
+		if i%2 == 0 {
+			operation = wgtypes.AllowedIPRemove
+		}
+		operations[i] = wgtypes.AllowedIPConfig{IPNet: ipn, Operation: operation}
+	}
+
+	cfg := wgtypes.Config{Peers: []wgtypes.PeerConfig{{
+		PublicKey:         peer,
+		ReplaceAllowedIPs: true,
+		AllowedIPs: []net.IPNet{
+			wgtest.MustCIDR("192.0.2.1/32"),
+			wgtest.MustCIDR("192.0.2.2/32"),
+		},
+		AllowedIPOperations: operations,
+	}}}
+
+	var allAttrs []netlink.Attribute
+	fn := func(greq genetlink.Message, _ netlink.Message) ([]genetlink.Message, error) {
+		attrs, err := netlink.UnmarshalAttributes(greq.Data)
+		if err != nil {
+			return nil, err
+		}
+		allAttrs = append(allAttrs, attrs...)
+		return []genetlink.Message{{}}, nil
+	}
+
+	c := testClient(t, fn)
+	defer c.Close()
+
+	if err := c.ConfigureDevice(okName, cfg); err != nil {
+		t.Fatalf("failed to configure: %v", err)
+	}
+
+	wantOperations := append([]wgtypes.AllowedIPConfig{
+		{IPNet: wgtest.MustCIDR("192.0.2.1/32"), Operation: wgtypes.AllowedIPAdd},
+		{IPNet: wgtest.MustCIDR("192.0.2.2/32"), Operation: wgtypes.AllowedIPAdd},
+	}, operations...)
+	var gotOperations []wgtypes.AllowedIPConfig
+	var peerFlags []uint32
+	for _, attr := range allAttrs {
+		if attr.Type&^netlink.Nested != unix.WGDEVICE_A_PEERS {
+			continue
+		}
+		peers, err := netlink.UnmarshalAttributes(attr.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, peerAttr := range peers {
+			attrs, err := netlink.UnmarshalAttributes(peerAttr.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var flags uint32
+			for _, peerField := range attrs {
+				switch peerField.Type &^ netlink.Nested {
+				case unix.WGPEER_A_FLAGS:
+					flags = nlenc.Uint32(peerField.Data)
+				case unix.WGPEER_A_ALLOWEDIPS:
+					gotOperations = append(gotOperations, decodeAllowedIPOperations(t, peerField.Data)...)
+				}
+			}
+			peerFlags = append(peerFlags, flags)
+		}
+	}
+
+	if diff := cmp.Diff(wantOperations, gotOperations); diff != "" {
+		t.Fatalf("unexpected allowed IP operations (-want +got):\n%s", diff)
+	}
+	wantFlags := []uint32{unix.WGPEER_F_REPLACE_ALLOWEDIPS, 0}
+	if diff := cmp.Diff(wantFlags, peerFlags); diff != "" {
+		t.Fatalf("unexpected peer flags (-want +got):\n%s", diff)
+	}
+}
+
+const (
+	testWGAllowedIPAttributeFlags = 4
+	testWGAllowedIPFlagRemoveMe   = 1 << 0
+)
+
+func mustAllowedIPOperations(operations []wgtypes.AllowedIPConfig) []byte {
+	ae := netlink.NewAttributeEncoder()
+	for i, operation := range operations {
+		operation := operation
+		ae.Nested(uint16(i), func(nae *netlink.AttributeEncoder) error {
+			ipn := operation.IPNet
+			family := uint16(unix.AF_INET6)
+			if !isIPv6(ipn.IP) {
+				family = unix.AF_INET
+				ipn.IP = ipn.IP.To4()
+			}
+			nae.Uint16(unix.WGALLOWEDIP_A_FAMILY, family)
+			nae.Bytes(unix.WGALLOWEDIP_A_IPADDR, ipn.IP)
+			ones, _ := ipn.Mask.Size()
+			nae.Uint8(unix.WGALLOWEDIP_A_CIDR_MASK, uint8(ones))
+			if operation.Operation == wgtypes.AllowedIPRemove {
+				nae.Uint32(testWGAllowedIPAttributeFlags, testWGAllowedIPFlagRemoveMe)
+			}
+			return nil
+		})
+	}
+	b, err := ae.Encode()
+	if err != nil {
+		panicf("failed to encode allowed IP operations: %v", err)
+	}
+	return b
+}
+
+func decodeAllowedIPOperations(t *testing.T, b []byte) []wgtypes.AllowedIPConfig {
+	t.Helper()
+	attrs, err := netlink.UnmarshalAttributes(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operations := make([]wgtypes.AllowedIPConfig, 0, len(attrs))
+	for _, attr := range attrs {
+		fields, err := netlink.UnmarshalAttributes(attr.Data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var (
+			operation = wgtypes.AllowedIPAdd
+			ipn       net.IPNet
+			family    uint16
+			mask      uint8
+		)
+		for _, field := range fields {
+			switch field.Type {
+			case unix.WGALLOWEDIP_A_FAMILY:
+				family = nlenc.Uint16(field.Data)
+			case unix.WGALLOWEDIP_A_IPADDR:
+				ipn.IP = net.IP(field.Data)
+			case unix.WGALLOWEDIP_A_CIDR_MASK:
+				mask = field.Data[0]
+			case testWGAllowedIPAttributeFlags:
+				if nlenc.Uint32(field.Data)&testWGAllowedIPFlagRemoveMe != 0 {
+					operation = wgtypes.AllowedIPRemove
+				}
+			}
+		}
+		bits := 128
+		if family == unix.AF_INET {
+			bits = 32
+		}
+		ipn.Mask = net.CIDRMask(int(mask), bits)
+		operations = append(operations, wgtypes.AllowedIPConfig{IPNet: ipn, Operation: operation})
+	}
+	return operations
 }
 
 func keyBytes(s string) []byte {

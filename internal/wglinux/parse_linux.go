@@ -65,12 +65,16 @@ func parseDeviceLoop(m genetlink.Message) (*wgtypes.Device, error) {
 		case unix.WGDEVICE_A_IFNAME:
 			d.Name = ad.String()
 		case unix.WGDEVICE_A_PRIVATE_KEY:
+			d.HasPrivateKey = true
 			ad.Do(parseKey(&d.PrivateKey))
 		case unix.WGDEVICE_A_PUBLIC_KEY:
+			d.HasPublicKey = true
 			ad.Do(parseKey(&d.PublicKey))
 		case unix.WGDEVICE_A_LISTEN_PORT:
+			d.HasListenPort = true
 			d.ListenPort = int(ad.Uint16())
 		case unix.WGDEVICE_A_FWMARK:
+			d.HasFirewallMark = true
 			d.FirewallMark = int(ad.Uint32())
 		case unix.WGDEVICE_A_PEERS:
 			// Netlink array of peers.
@@ -107,11 +111,14 @@ func parsePeer(ad *netlink.AttributeDecoder) wgtypes.Peer {
 		case unix.WGPEER_A_PUBLIC_KEY:
 			ad.Do(parseKey(&p.PublicKey))
 		case unix.WGPEER_A_PRESHARED_KEY:
+			p.HasPresharedKey = true
 			ad.Do(parseKey(&p.PresharedKey))
 		case unix.WGPEER_A_ENDPOINT:
+			p.HasEndpoint = true
 			p.Endpoint = &net.UDPAddr{}
 			ad.Do(parseSockaddr(p.Endpoint))
 		case unix.WGPEER_A_PERSISTENT_KEEPALIVE_INTERVAL:
+			p.HasPersistentKeepaliveInterval = true
 			p.PersistentKeepaliveInterval = time.Duration(ad.Uint16()) * time.Second
 		case unix.WGPEER_A_LAST_HANDSHAKE_TIME:
 			ad.Do(parseTimespec(&p.LastHandshakeTime))
