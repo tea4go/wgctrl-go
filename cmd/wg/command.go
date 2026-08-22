@@ -7,18 +7,18 @@ import (
 
 const (
 	version = "wireguard-tools v1.0.20260223 - https://git.zx2c4.com/wireguard-tools/\n"
-	usage   = "Usage: wg <cmd> [<args>]\n\n" +
-		"Available subcommands:\n" +
-		"  show: Shows the current configuration and device information\n" +
-		"  showconf: Shows the current configuration of a given WireGuard interface, for use with `setconf'\n" +
-		"  set: Change the current configuration, add peers, remove peers, or change peers\n" +
-		"  setconf: Applies a configuration file to a WireGuard interface\n" +
-		"  addconf: Appends a configuration file to a WireGuard interface\n" +
-		"  syncconf: Synchronizes a configuration file to a WireGuard interface\n" +
-		"  genkey: Generates a new private key and writes it to stdout\n" +
-		"  genpsk: Generates a new preshared key and writes it to stdout\n" +
-		"  pubkey: Reads a private key from stdin and writes a public key to stdout\n" +
-		"You may pass `--help' to any of these subcommands to view usage.\n"
+	usage   = "用法: wg <命令> [<参数>]\n\n" +
+		"可用子命令:\n" +
+		"  show: 显示当前配置和设备信息\n" +
+		"  showconf: 显示指定 WireGuard 接口的当前配置，供 `setconf' 使用\n" +
+		"  set: 修改当前配置、添加对等节点、移除对等节点或修改对等节点\n" +
+		"  setconf: 将配置文件应用到 WireGuard 接口\n" +
+		"  addconf: 向 WireGuard 接口追加配置文件\n" +
+		"  syncconf: 将配置文件同步到 WireGuard 接口\n" +
+		"  genkey: 生成新的私钥并写入标准输出\n" +
+		"  genpsk: 生成新的预共享密钥并写入标准输出\n" +
+		"  pubkey: 从标准输入读取私钥并将公钥写入标准输出\n" +
+		"你可以向任意子命令传递 `--help' 参数查看用法。\n"
 )
 
 type commandFunc func(args []string, in io.Reader, out, errOut io.Writer) int
@@ -57,7 +57,7 @@ func execute(args []string, in io.Reader, out, errOut io.Writer) int {
 
 	command, ok := commands[args[0]]
 	if !ok {
-		fmt.Fprintf(errOut, "Invalid subcommand: `%s'\n", args[0])
+		fmt.Fprintf(errOut, "无效的子命令: `%s'\n", args[0])
 		_, _ = io.WriteString(errOut, usage)
 		return 1
 	}

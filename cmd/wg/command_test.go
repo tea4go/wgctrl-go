@@ -52,7 +52,7 @@ func TestExecuteInvalidSubcommand(t *testing.T) {
 	if out.Len() != 0 {
 		t.Fatalf("unexpected stdout: %q", out.String())
 	}
-	if want := "Invalid subcommand: `invalid'\n" + usage; errOut.String() != want {
+	if want := "无效的子命令: `invalid'\n" + usage; errOut.String() != want {
 		t.Fatalf("unexpected stderr:\n%s", errOut.String())
 	}
 }
