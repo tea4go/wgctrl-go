@@ -23,7 +23,7 @@ const (
 
 type commandFunc func(args []string, in io.Reader, out, errOut io.Writer) int
 
-var showCommand commandFunc = unimplementedCommand
+var showCommand commandFunc = show
 
 var commands = map[string]commandFunc{
 	"show": func(args []string, in io.Reader, out, errOut io.Writer) int {
