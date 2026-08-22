@@ -1,2 +1,4 @@
 cmd/wgctrl/wgctrl
 *.test
+cmd/wg/wg.exe
+go.mod
