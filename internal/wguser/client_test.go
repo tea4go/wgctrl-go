@@ -110,7 +110,7 @@ func testClient(t *testing.T, res []byte) (*Client, func() []byte) {
 	c := &Client{
 		// Point the Client at our temporary userspace device listener.
 		find: testFind(dir),
-		dial: dial,
+		dial: testDial,
 	}
 
 	return c, func() []byte {

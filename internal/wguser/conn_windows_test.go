@@ -16,6 +16,10 @@ import (
 )
 
 // isWINE determines if this test is running in WINE.
+var testDial = func(device string) (net.Conn, error) {
+	return (&namedpipe.DialConfig{}).DialTimeout(device, 0)
+}
+
 var isWINE = func() bool {
 	// Reference: https://forum.winehq.org/viewtopic.php?t=4988.
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\Wine`, registry.QUERY_VALUE)

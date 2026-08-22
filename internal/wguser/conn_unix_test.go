@@ -50,6 +50,8 @@ func TestUNIX_findUNIXSockets(t *testing.T) {
 	}
 }
 
+var testDial = dial
+
 // testFind produces a Client.find function for integration tests.
 func testFind(dir string) func() ([]string, error) {
 	return func() ([]string, error) {
