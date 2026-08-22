@@ -163,16 +163,23 @@ func (c *Client) Device(name string) (*wgtypes.Device, error) {
 	}
 	c.lastLenGuess = size
 	interfaze := (*ioctl.Interface)(unsafe.Pointer(&buf[0]))
+	device := parseConfiguration(name, interfaze)
+	return &device, nil
+}
 
+func parseConfiguration(name string, interfaze *ioctl.Interface) wgtypes.Device {
 	device := wgtypes.Device{Type: wgtypes.WindowsKernel, Name: name}
 	if interfaze.Flags&ioctl.InterfaceHasPrivateKey != 0 {
 		device.PrivateKey = interfaze.PrivateKey
+		device.HasPrivateKey = true
 	}
 	if interfaze.Flags&ioctl.InterfaceHasPublicKey != 0 {
 		device.PublicKey = interfaze.PublicKey
+		device.HasPublicKey = true
 	}
 	if interfaze.Flags&ioctl.InterfaceHasListenPort != 0 {
 		device.ListenPort = int(interfaze.ListenPort)
+		device.HasListenPort = true
 	}
 	var p *ioctl.Peer
 	for i := uint32(0); i < interfaze.PeerCount; i++ {
@@ -187,12 +194,15 @@ func (c *Client) Device(name string) (*wgtypes.Device, error) {
 		}
 		if p.Flags&ioctl.PeerHasPresharedKey != 0 {
 			peer.PresharedKey = p.PresharedKey
+			peer.HasPresharedKey = true
 		}
 		if p.Flags&ioctl.PeerHasEndpoint != 0 {
 			peer.Endpoint = &net.UDPAddr{IP: p.Endpoint.IP(), Port: int(p.Endpoint.Port())}
+			peer.HasEndpoint = true
 		}
 		if p.Flags&ioctl.PeerHasPersistentKeepalive != 0 {
 			peer.PersistentKeepaliveInterval = time.Duration(p.PersistentKeepalive) * time.Second
+			peer.HasPersistentKeepaliveInterval = true
 		}
 		if p.Flags&ioctl.PeerHasProtocolVersion != 0 {
 			peer.ProtocolVersion = int(p.ProtocolVersion)
@@ -225,7 +235,7 @@ func (c *Client) Device(name string) (*wgtypes.Device, error) {
 		}
 		device.Peers = append(device.Peers, peer)
 	}
-	return &device, nil
+	return device
 }
 
 // ConfigureDevice implements wginternal.Client.
@@ -236,9 +246,14 @@ func (c *Client) ConfigureDevice(name string, cfg wgtypes.Config) error {
 	}
 	defer windows.CloseHandle(handle)
 
+	interfaze, size := buildConfiguration(cfg)
+	return windows.DeviceIoControl(handle, ioctl.IoctlSet, nil, 0, (*byte)(unsafe.Pointer(interfaze)), size, &size, nil)
+}
+
+func buildConfiguration(cfg wgtypes.Config) (*ioctl.Interface, uint32) {
 	preallocation := unsafe.Sizeof(ioctl.Interface{}) + uintptr(len(cfg.Peers))*unsafe.Sizeof(ioctl.Peer{})
 	for i := range cfg.Peers {
-		preallocation += uintptr(len(cfg.Peers[i].AllowedIPs)) * unsafe.Sizeof(ioctl.AllowedIP{})
+		preallocation += uintptr(len(cfg.Peers[i].AllowedIPs)+len(cfg.Peers[i].AllowedIPOperations)) * unsafe.Sizeof(ioctl.AllowedIP{})
 	}
 	var b ioctl.ConfigBuilder
 	b.Preallocate(uint32(preallocation))
@@ -259,7 +274,7 @@ func (c *Client) ConfigureDevice(name string, cfg wgtypes.Config) error {
 		peer := &ioctl.Peer{
 			Flags:           ioctl.PeerHasPublicKey,
 			PublicKey:       cfg.Peers[i].PublicKey,
-			AllowedIPsCount: uint32(len(cfg.Peers[i].AllowedIPs)),
+			AllowedIPsCount: uint32(len(cfg.Peers[i].AllowedIPs) + len(cfg.Peers[i].AllowedIPOperations)),
 		}
 		if cfg.Peers[i].ReplaceAllowedIPs {
 			peer.Flags |= ioctl.PeerReplaceAllowedIPs
@@ -284,24 +299,35 @@ func (c *Client) ConfigureDevice(name string, cfg wgtypes.Config) error {
 		}
 		b.AppendPeer(peer)
 		for j := range cfg.Peers[i].AllowedIPs {
-			var family ioctl.AddressFamily
-			var ip net.IP
-			if ip = cfg.Peers[i].AllowedIPs[j].IP.To4(); ip != nil {
-				family = windows.AF_INET
-			} else if ip = cfg.Peers[i].AllowedIPs[j].IP.To16(); ip != nil {
-				family = windows.AF_INET6
-			} else {
-				ip = cfg.Peers[i].AllowedIPs[j].IP
+			appendAllowedIP(&b, cfg.Peers[i].AllowedIPs[j], 0)
+		}
+		for j := range cfg.Peers[i].AllowedIPOperations {
+			flags := ioctl.AllowedIPFlag(0)
+			if cfg.Peers[i].AllowedIPOperations[j].Operation == wgtypes.AllowedIPRemove {
+				flags = ioctl.AllowedIPRemove
 			}
-			cidr, _ := cfg.Peers[i].AllowedIPs[j].Mask.Size()
-			a := &ioctl.AllowedIP{
-				AddressFamily: family,
-				Cidr:          uint8(cidr),
-			}
-			copy(a.Address[:], ip)
-			b.AppendAllowedIP(a)
+			appendAllowedIP(&b, cfg.Peers[i].AllowedIPOperations[j].IPNet, flags)
 		}
 	}
-	interfaze, size := b.Interface()
-	return windows.DeviceIoControl(handle, ioctl.IoctlSet, nil, 0, (*byte)(unsafe.Pointer(interfaze)), size, &size, nil)
+	return b.Interface()
+}
+
+func appendAllowedIP(b *ioctl.ConfigBuilder, allowedIP net.IPNet, flags ioctl.AllowedIPFlag) {
+	var family ioctl.AddressFamily
+	var ip net.IP
+	if ip = allowedIP.IP.To4(); ip != nil {
+		family = windows.AF_INET
+	} else if ip = allowedIP.IP.To16(); ip != nil {
+		family = windows.AF_INET6
+	} else {
+		ip = allowedIP.IP
+	}
+	cidr, _ := allowedIP.Mask.Size()
+	a := &ioctl.AllowedIP{
+		AddressFamily: family,
+		Cidr:          uint8(cidr),
+		Flags:         flags,
+	}
+	copy(a.Address[:], ip)
+	b.AppendAllowedIP(a)
 }

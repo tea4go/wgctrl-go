@@ -12,11 +12,16 @@ const (
 	IoctlSet = 0xb098c509
 )
 
+type AllowedIPFlag uint32
+
+const AllowedIPRemove AllowedIPFlag = 1 << 0
+
 type AllowedIP struct {
 	Address       [16]byte
 	AddressFamily AddressFamily
 	Cidr          uint8
-	_             [4]byte
+	_             uint8
+	Flags         AllowedIPFlag
 }
 
 type PeerFlag uint32
