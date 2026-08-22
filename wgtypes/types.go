@@ -52,17 +52,29 @@ type Device struct {
 	// PrivateKey is the device's private key.
 	PrivateKey Key
 
+	// HasPrivateKey specifies whether a private key is configured.
+	HasPrivateKey bool
+
 	// PublicKey is the device's public key, computed from its PrivateKey.
 	PublicKey Key
 
+	// HasPublicKey specifies whether a public key is configured.
+	HasPublicKey bool
+
 	// ListenPort is the device's network listening port.
 	ListenPort int
+
+	// HasListenPort specifies whether a listening port is configured.
+	HasListenPort bool
 
 	// FirewallMark is the device's current firewall mark.
 	//
 	// The firewall mark can be used in conjunction with firewall software to
 	// take action on outgoing WireGuard packets.
 	FirewallMark int
+
+	// HasFirewallMark specifies whether a firewall mark is configured.
+	HasFirewallMark bool
 
 	// Peers is the list of network peers associated with this device.
 	Peers []Peer
@@ -167,15 +179,24 @@ type Peer struct {
 	// A zero-value Key means no preshared key is configured.
 	PresharedKey Key
 
+	// HasPresharedKey specifies whether a preshared key is configured.
+	HasPresharedKey bool
+
 	// Endpoint is the most recent source address used for communication by
 	// this Peer.
 	Endpoint *net.UDPAddr
+
+	// HasEndpoint specifies whether an endpoint is configured.
+	HasEndpoint bool
 
 	// PersistentKeepaliveInterval specifies how often an "empty" packet is sent
 	// to a peer to keep a connection alive.
 	//
 	// A value of 0 indicates that persistent keepalives are disabled.
 	PersistentKeepaliveInterval time.Duration
+
+	// HasPersistentKeepaliveInterval specifies whether a persistent keepalive is configured.
+	HasPersistentKeepaliveInterval bool
 
 	// LastHandshakeTime indicates the most recent time a handshake was performed
 	// with this peer.
@@ -233,6 +254,22 @@ type Config struct {
 
 // TODO(mdlayher): consider adding ProtocolVersion in PeerConfig.
 
+// An AllowedIPOperation specifies how an allowed IP should be applied.
+type AllowedIPOperation uint8
+
+// Possible AllowedIPOperation values.
+const (
+	AllowedIPSet AllowedIPOperation = iota
+	AllowedIPAdd
+	AllowedIPRemove
+)
+
+// An AllowedIPConfig specifies an allowed IP and its operation.
+type AllowedIPConfig struct {
+	IPNet     net.IPNet
+	Operation AllowedIPOperation
+}
+
 // A PeerConfig is a WireGuard device peer configuration.
 //
 // Because the zero value of some Go types may be significant to WireGuard for
@@ -273,4 +310,7 @@ type PeerConfig struct {
 	// AllowedIPs specifies a list of allowed IP addresses in CIDR notation
 	// for this peer.
 	AllowedIPs []net.IPNet
+
+	// AllowedIPOperations specifies ordered allowed IP operations for this peer.
+	AllowedIPOperations []AllowedIPConfig
 }

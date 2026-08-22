@@ -3,12 +3,43 @@ package wgtypes_test
 import (
 	"bytes"
 	"fmt"
+	"net"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"golang.org/x/crypto/curve25519"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
+
+func TestAllowedIPOperations(t *testing.T) {
+	_, ipn, err := net.ParseCIDR("10.0.0.0/24")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := []wgtypes.AllowedIPConfig{
+		{IPNet: *ipn, Operation: wgtypes.AllowedIPSet},
+		{IPNet: *ipn, Operation: wgtypes.AllowedIPAdd},
+		{IPNet: *ipn, Operation: wgtypes.AllowedIPRemove},
+	}
+	if got[0].Operation == got[1].Operation || got[1].Operation == got[2].Operation {
+		t.Fatal("operations are not distinct")
+	}
+}
+
+func TestFieldPresence(t *testing.T) {
+	_ = wgtypes.Device{
+		HasPrivateKey:   true,
+		HasPublicKey:    true,
+		HasListenPort:   true,
+		HasFirewallMark: true,
+	}
+	_ = wgtypes.Peer{
+		HasPresharedKey:                true,
+		HasEndpoint:                    true,
+		HasPersistentKeepaliveInterval: true,
+	}
+}
 
 func TestPreparedKeys(t *testing.T) {
 	// Keys generated via "wg genkey" and "wg pubkey" for comparison
