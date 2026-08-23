@@ -10,10 +10,10 @@ import (
 	"golang.org/x/crypto/curve25519"
 )
 
-// A DeviceType specifies the underlying implementation of a WireGuard device.
+// DeviceType 用于指定 WireGuard 设备的底层实现类型。
 type DeviceType int
 
-// Possible DeviceType values.
+// 可用的 DeviceType 枚举值。
 const (
 	Unknown DeviceType = iota
 	LinuxKernel
@@ -23,7 +23,7 @@ const (
 	Userspace
 )
 
-// String returns the string representation of a DeviceType.
+// String 返回 DeviceType 的字符串表示形式。
 func (dt DeviceType) String() string {
 	switch dt {
 	case LinuxKernel:
@@ -41,89 +41,87 @@ func (dt DeviceType) String() string {
 	}
 }
 
-// A Device is a WireGuard device.
+// Device 表示一个 WireGuard 设备。
 type Device struct {
-	// Name is the name of the device.
+	// Name 是设备的名称。
 	Name string
 
-	// Type specifies the underlying implementation of the device.
+	// Type 用于指定设备的底层实现类型。
 	Type DeviceType
 
-	// PrivateKey is the device's private key.
+	// PrivateKey 是设备的私钥。
 	PrivateKey Key
 
-	// HasPrivateKey specifies whether a private key is configured.
+	// HasPrivateKey 指示是否已配置私钥。
 	HasPrivateKey bool
 
-	// PublicKey is the device's public key, computed from its PrivateKey.
+	// PublicKey 是设备的公钥，由其私钥计算得出。
 	PublicKey Key
 
-	// HasPublicKey specifies whether a public key is configured.
+	// HasPublicKey 指示是否已配置公钥。
 	HasPublicKey bool
 
-	// ListenPort is the device's network listening port.
+	// ListenPort 是设备的网络监听端口。
 	ListenPort int
 
-	// HasListenPort specifies whether a listening port is configured.
+	// HasListenPort 指示是否已配置监听端口。
 	HasListenPort bool
 
-	// FirewallMark is the device's current firewall mark.
+	// FirewallMark 是设备当前的防火墙标记。
 	//
-	// The firewall mark can be used in conjunction with firewall software to
-	// take action on outgoing WireGuard packets.
+	// 防火墙标记可与防火墙软件结合使用，
+	// 对出站的 WireGuard 数据包执行相应操作。
 	FirewallMark int
 
-	// HasFirewallMark specifies whether a firewall mark is configured.
+	// HasFirewallMark 指示是否已配置防火墙标记。
 	HasFirewallMark bool
 
-	// Peers is the list of network peers associated with this device.
+	// Peers 是与此设备关联的网络对等节点列表。
 	Peers []Peer
 }
 
-// KeyLen is the expected key length for a WireGuard key.
+// KeyLen 是 WireGuard 密钥的期望长度。
 const KeyLen = 32 // wgh.KeyLen
 
-// A Key is a public, private, or pre-shared secret key.  The Key constructor
-// functions in this package can be used to create Keys suitable for each of
-// these applications.
+// Key 表示公钥、私钥或预共享密钥。可以使用本包中的 Key 构造函数
+// 来创建适用于上述各种用途的 Key。
 type Key [KeyLen]byte
 
-// GenerateKey generates a Key suitable for use as a pre-shared secret key from
-// a cryptographically safe source.
+// GenerateKey 从加密安全的随机源生成一个可用作预共享密钥的 Key。
 //
-// The output Key should not be used as a private key; use GeneratePrivateKey
-// instead.
+// 输出的 Key 不应用作私钥；请改用 GeneratePrivateKey。
 func GenerateKey() (Key, error) {
 	b := make([]byte, KeyLen)
 	if _, err := rand.Read(b); err != nil {
-		return Key{}, fmt.Errorf("wgtypes: failed to read random bytes: %v", err)
+		return Key{}, fmt.Errorf("wgtypes: 读取随机字节失败: %v", err)
 	}
 
 	return NewKey(b)
 }
 
-// GeneratePrivateKey generates a Key suitable for use as a private key from a
-// cryptographically safe source.
+// GeneratePrivateKey 从加密安全的随机源生成一个可用作私钥的 Key。
 func GeneratePrivateKey() (Key, error) {
 	key, err := GenerateKey()
 	if err != nil {
 		return Key{}, err
 	}
 
-	// Modify random bytes using algorithm described at:
+	// 使用以下文档中描述的算法修改随机字节:
 	// https://cr.yp.to/ecdh.html.
+	// 第 0 字节低 3 位清零，保证其为 8 的倍数
 	key[0] &= 248
+	// 第 31 字节最高位清零，保证小于 2^255
 	key[31] &= 127
+	// 第 31 字节次高位置 1，保证大于等于 2^254
 	key[31] |= 64
 
 	return key, nil
 }
 
-// NewKey creates a Key from an existing byte slice.  The byte slice must be
-// exactly 32 bytes in length.
+// NewKey 从现有的字节切片创建一个 Key。字节切片的长度必须恰好为 32 字节。
 func NewKey(b []byte) (Key, error) {
 	if len(b) != KeyLen {
-		return Key{}, fmt.Errorf("wgtypes: incorrect key size: %d", len(b))
+		return Key{}, fmt.Errorf("wgtypes: 密钥长度不正确: %d", len(b))
 	}
 
 	var k Key
@@ -132,185 +130,178 @@ func NewKey(b []byte) (Key, error) {
 	return k, nil
 }
 
-// ParseKey parses a Key from a base64-encoded string, as produced by the
-// Key.String method.
+// ParseKey 从 base64 编码的字符串中解析出 Key，格式与 Key.String 方法输出的一致。
 func ParseKey(s string) (Key, error) {
 	b, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
-		return Key{}, fmt.Errorf("wgtypes: failed to parse base64-encoded key: %v", err)
+		return Key{}, fmt.Errorf("wgtypes: 解析 base64 编码的密钥失败: %v", err)
 	}
 
 	return NewKey(b)
 }
 
-// PublicKey computes a public key from the private key k.
+// PublicKey 从私钥 k 计算出对应的公钥。
 //
-// PublicKey should only be called when k is a private key.
+// PublicKey 仅应在 k 是私钥时调用。
 func (k Key) PublicKey() Key {
 	var (
 		pub  [KeyLen]byte
 		priv = [KeyLen]byte(k)
 	)
 
-	// ScalarBaseMult uses the correct base value per https://cr.yp.to/ecdh.html,
-	// so no need to specify it.
+	// ScalarBaseMult 会根据 https://cr.yp.to/ecdh.html 使用正确的基点值，
+	// 因此无需显式指定基点。
+	// 使用 curve25519 标量乘法: pub = priv * G，其中 G 是 curve25519 的标准基点
 	curve25519.ScalarBaseMult(&pub, &priv)
 
 	return Key(pub)
 }
 
-// String returns the base64-encoded string representation of a Key.
+// String 返回 Key 的 base64 编码字符串表示形式。
 //
-// ParseKey can be used to produce a new Key from this string.
+// 可以使用 ParseKey 从该字符串重新生成 Key。
 func (k Key) String() string {
 	return base64.StdEncoding.EncodeToString(k[:])
 }
 
-// A Peer is a WireGuard peer to a Device.
+// Peer 表示 Device 的一个 WireGuard 对等节点。
 type Peer struct {
-	// PublicKey is the public key of a peer, computed from its private key.
+	// PublicKey 是对等节点的公钥，由其私钥计算得出。
 	//
-	// PublicKey is always present in a Peer.
+	// Peer 中始终存在 PublicKey 字段。
 	PublicKey Key
 
-	// PresharedKey is an optional preshared key which may be used as an
-	// additional layer of security for peer communications.
+	// PresharedKey 是可选的预共享密钥，可用作对等节点通信的
+	// 额外安全层。
 	//
-	// A zero-value Key means no preshared key is configured.
+	// 零值 Key 表示未配置预共享密钥。
 	PresharedKey Key
 
-	// HasPresharedKey specifies whether a preshared key is configured.
+	// HasPresharedKey 指示是否已配置预共享密钥。
 	HasPresharedKey bool
 
-	// Endpoint is the most recent source address used for communication by
-	// this Peer.
+	// Endpoint 是此对等节点最近一次通信时使用的源地址。
 	Endpoint *net.UDPAddr
 
-	// HasEndpoint specifies whether an endpoint is configured.
+	// HasEndpoint 指示是否已配置端点地址。
 	HasEndpoint bool
 
-	// PersistentKeepaliveInterval specifies how often an "empty" packet is sent
-	// to a peer to keep a connection alive.
+	// PersistentKeepaliveInterval 指定多久向对等节点发送一个
+	// "空" 数据包以保持连接存活。
 	//
-	// A value of 0 indicates that persistent keepalives are disabled.
+	// 值为 0 表示禁用持续保持存活功能。
 	PersistentKeepaliveInterval time.Duration
 
-	// HasPersistentKeepaliveInterval specifies whether a persistent keepalive is configured.
+	// HasPersistentKeepaliveInterval 指示是否已配置持续保持存活间隔。
 	HasPersistentKeepaliveInterval bool
 
-	// LastHandshakeTime indicates the most recent time a handshake was performed
-	// with this peer.
+	// LastHandshakeTime 指示与此对等节点最近一次执行握手的时间。
 	//
-	// A zero-value time.Time indicates that no handshake has taken place with
-	// this peer.
+	// 零值 time.Time 表示尚未与此对等节点进行过握手。
 	LastHandshakeTime time.Time
 
-	// ReceiveBytes indicates the number of bytes received from this peer.
+	// ReceiveBytes 指示从此对等节点接收的字节数。
 	ReceiveBytes int64
 
-	// TransmitBytes indicates the number of bytes transmitted to this peer.
+	// TransmitBytes 指示发送给此对等节点的字节数。
 	TransmitBytes int64
 
-	// AllowedIPs specifies which IPv4 and IPv6 addresses this peer is allowed
-	// to communicate on.
+	// AllowedIPs 指定允许此对等节点通信的 IPv4 和 IPv6 地址。
 	//
-	// 0.0.0.0/0 indicates that all IPv4 addresses are allowed, and ::/0
-	// indicates that all IPv6 addresses are allowed.
+	// 0.0.0.0/0 表示允许所有 IPv4 地址，::/0 表示允许所有 IPv6 地址。
 	AllowedIPs []net.IPNet
 
-	// ProtocolVersion specifies which version of the WireGuard protocol is used
-	// for this Peer.
+	// ProtocolVersion 指定此对等节点使用的 WireGuard 协议版本。
 	//
-	// A value of 0 indicates that the most recent protocol version will be used.
+	// 值为 0 表示将使用最新的协议版本。
 	ProtocolVersion int
 }
 
-// A Config is a WireGuard device configuration.
+// Config 表示 WireGuard 设备的配置。
 //
-// Because the zero value of some Go types may be significant to WireGuard for
-// Config fields, pointer types are used for some of these fields. Only
-// pointer fields which are not nil will be applied when configuring a device.
+// 由于某些 Go 类型的零值对 WireGuard 的 Config 字段可能具有特殊意义，
+// 因此部分字段使用了指针类型。配置设备时，仅会应用非 nil 的指针字段。
 type Config struct {
-	// PrivateKey specifies a private key configuration, if not nil.
+	// PrivateKey 在非 nil 时指定私钥配置。
 	//
-	// A non-nil, zero-value Key will clear the private key.
+	// 非 nil 且为零值的 Key 将清除私钥。
 	PrivateKey *Key
 
-	// ListenPort specifies a device's listening port, if not nil.
+	// ListenPort 在非 nil 时指定设备的监听端口。
 	ListenPort *int
 
-	// FirewallMark specifies a device's firewall mark, if not nil.
+	// FirewallMark 在非 nil 时指定设备的防火墙标记。
 	//
-	// If non-nil and set to 0, the firewall mark will be cleared.
+	// 若非 nil 且设置为 0，将清除防火墙标记。
 	FirewallMark *int
 
-	// ReplacePeers specifies if the Peers in this configuration should replace
-	// the existing peer list, instead of appending them to the existing list.
+	// ReplacePeers 指示此配置中的 Peers 是否应替换现有对等节点列表，
+	// 而非追加到现有列表中。
 	ReplacePeers bool
 
-	// Peers specifies a list of peer configurations to apply to a device.
+	// Peers 指定要应用到设备的对等节点配置列表。
 	Peers []PeerConfig
 }
 
-// TODO(mdlayher): consider adding ProtocolVersion in PeerConfig.
+// TODO(mdlayher): 考虑在 PeerConfig 中添加 ProtocolVersion 字段。
 
-// An AllowedIPOperation specifies how an allowed IP should be applied.
+// AllowedIPOperation 指定应如何应用允许的 IP 规则。
 type AllowedIPOperation uint8
 
-// Possible AllowedIPOperation values.
+// 可用的 AllowedIPOperation 枚举值。
 const (
+	// AllowedIPSet 表示设置（替换）允许的 IP 列表
 	AllowedIPSet AllowedIPOperation = iota
+	// AllowedIPAdd 表示向允许的 IP 列表中添加
 	AllowedIPAdd
+	// AllowedIPRemove 表示从允许的 IP 列表中移除
 	AllowedIPRemove
 )
 
-// An AllowedIPConfig specifies an allowed IP and its operation.
+// AllowedIPConfig 用于指定一个允许的 IP 及其对应的操作类型。
 type AllowedIPConfig struct {
-	IPNet     net.IPNet
+	// IPNet 是 IP 网络地址段（CIDR 表示）
+	IPNet net.IPNet
+	// Operation 是对该 IP 段执行的操作（设置/添加/移除）
 	Operation AllowedIPOperation
 }
 
-// A PeerConfig is a WireGuard device peer configuration.
+// PeerConfig 表示 WireGuard 设备的对等节点配置。
 //
-// Because the zero value of some Go types may be significant to WireGuard for
-// PeerConfig fields, pointer types are used for some of these fields. Only
-// pointer fields which are not nil will be applied when configuring a peer.
+// 由于某些 Go 类型的零值对 WireGuard 的 PeerConfig 字段可能具有特殊意义，
+// 因此部分字段使用了指针类型。配置对等节点时，仅会应用非 nil 的指针字段。
 type PeerConfig struct {
-	// PublicKey specifies the public key of this peer.  PublicKey is a
-	// mandatory field for all PeerConfigs.
+	// PublicKey 指定此对等节点的公钥。PublicKey 是所有 PeerConfig 的必填字段。
 	PublicKey Key
 
-	// Remove specifies if the peer with this public key should be removed
-	// from a device's peer list.
+	// Remove 指示是否应从设备的对等节点列表中移除此公钥对应的对等节点。
 	Remove bool
 
-	// UpdateOnly specifies that an operation will only occur on this peer
-	// if the peer already exists as part of the interface.
+	// UpdateOnly 指定仅当此对等节点已作为接口的一部分存在时，
+	// 才对其执行操作。
 	UpdateOnly bool
 
-	// PresharedKey specifies a peer's preshared key configuration, if not nil.
+	// PresharedKey 在非 nil 时指定对等节点的预共享密钥配置。
 	//
-	// A non-nil, zero-value Key will clear the preshared key.
+	// 非 nil 且为零值的 Key 将清除预共享密钥。
 	PresharedKey *Key
 
-	// Endpoint specifies the endpoint of this peer entry, if not nil.
+	// Endpoint 在非 nil 时指定此对等节点条目的端点地址。
 	Endpoint *net.UDPAddr
 
-	// PersistentKeepaliveInterval specifies the persistent keepalive interval
-	// for this peer, if not nil.
+	// PersistentKeepaliveInterval 在非 nil 时指定此对等节点的
+	// 持续保持存活间隔。
 	//
-	// A non-nil value of 0 will clear the persistent keepalive interval.
+	// 非 nil 且值为 0 时将清除持续保持存活间隔设置。
 	PersistentKeepaliveInterval *time.Duration
 
-	// ReplaceAllowedIPs specifies if the allowed IPs specified in this peer
-	// configuration should replace any existing ones, instead of appending them
-	// to the allowed IPs list.
+	// ReplaceAllowedIPs 指示此对等节点配置中指定的允许 IP 是否应
+	// 替换任何现有的允许 IP，而非追加到允许 IP 列表中。
 	ReplaceAllowedIPs bool
 
-	// AllowedIPs specifies a list of allowed IP addresses in CIDR notation
-	// for this peer.
+	// AllowedIPs 以 CIDR 表示法指定此对等节点的允许 IP 地址列表。
 	AllowedIPs []net.IPNet
 
-	// AllowedIPOperations specifies ordered allowed IP operations for this peer.
+	// AllowedIPOperations 按顺序指定此对等节点的允许 IP 操作序列。
 	AllowedIPOperations []AllowedIPConfig
 }
