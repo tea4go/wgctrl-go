@@ -51,6 +51,50 @@ func TestShowListError(t *testing.T) {
 	}
 }
 
+func TestShowColorModes(t *testing.T) {
+	old := newShowClient
+	t.Cleanup(func() { newShowClient = old })
+	newShowClient = func() (showClient, error) { return &fakeShowClient{device: &wgtypes.Device{Name: "wg0"}}, nil }
+
+	for _, test := range []struct {
+		name      string
+		mode      string
+		wantColor bool
+	}{
+		{"always", "always", true},
+		{"never", "never", false},
+		{"redirected default", "", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("WG_COLOR_MODE", test.mode)
+			var out, errOut bytes.Buffer
+			if code := show([]string{"wg0"}, strings.NewReader(""), &out, &errOut); code != 0 {
+				t.Fatalf("code=%d err=%q", code, errOut.String())
+			}
+			if got := strings.Contains(out.String(), "\x1b["); got != test.wantColor {
+				t.Fatalf("contains ANSI = %v, want %v: %q", got, test.wantColor, out.String())
+			}
+		})
+	}
+}
+
+func TestShowFieldsNeverUseColor(t *testing.T) {
+	old := newShowClient
+	t.Cleanup(func() { newShowClient = old })
+	newShowClient = func() (showClient, error) { return &fakeShowClient{device: &wgtypes.Device{Name: "wg0"}}, nil }
+	t.Setenv("WG_COLOR_MODE", "always")
+
+	for _, field := range []string{"public-key", "dump"} {
+		var out, errOut bytes.Buffer
+		if code := show([]string{"wg0", field}, strings.NewReader(""), &out, &errOut); code != 0 {
+			t.Fatalf("field=%s code=%d err=%q", field, code, errOut.String())
+		}
+		if strings.Contains(out.String(), "\x1b[") {
+			t.Fatalf("field %s contains ANSI: %q", field, out.String())
+		}
+	}
+}
+
 func TestShowRejectsInvalidField(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := show([]string{"wg0", "unknown"}, strings.NewReader(""), &out, &errOut); code != 1 || !strings.Contains(errOut.String(), "unknown") {

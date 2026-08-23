@@ -11,27 +11,50 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func Pretty(w io.Writer, d *wgtypes.Device, now time.Time, showKeys bool) error {
-	if _, err := fmt.Fprintf(w, "interface: %s\n", d.Name); err != nil {
+const (
+	ansiReset  = "\x1b[0m"
+	ansiBold   = "\x1b[1m"
+	ansiRed    = "\x1b[31m"
+	ansiGreen  = "\x1b[32m"
+	ansiYellow = "\x1b[33m"
+	ansiCyan   = "\x1b[36m"
+)
+
+func styled(color bool, code, value string) string {
+	if !color {
+		return value
+	}
+	return code + value + ansiReset
+}
+
+func bold(color bool, value string) string { return styled(color, ansiBold, value) }
+
+func Pretty(w io.Writer, d *wgtypes.Device, now time.Time, showKeys, color bool) error {
+	if color {
+		if _, err := fmt.Fprint(w, ansiReset); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(w, "%s: %s\n", styled(color, ansiGreen+ansiBold, "interface"), styled(color, ansiGreen, d.Name)); err != nil {
 		return err
 	}
 	if d.HasPublicKey {
-		if _, err := fmt.Fprintf(w, "  public key: %s\n", d.PublicKey); err != nil {
+		if _, err := fmt.Fprintf(w, "  %s: %s\n", bold(color, "public key"), d.PublicKey); err != nil {
 			return err
 		}
 	}
 	if d.HasPrivateKey {
-		if _, err := fmt.Fprintf(w, "  private key: %s\n", displayKey(d.PrivateKey, showKeys)); err != nil {
+		if _, err := fmt.Fprintf(w, "  %s: %s\n", bold(color, "private key"), displayKey(d.PrivateKey, showKeys)); err != nil {
 			return err
 		}
 	}
 	if d.ListenPort != 0 {
-		if _, err := fmt.Fprintf(w, "  listening port: %d\n", d.ListenPort); err != nil {
+		if _, err := fmt.Fprintf(w, "  %s: %d\n", bold(color, "listening port"), d.ListenPort); err != nil {
 			return err
 		}
 	}
 	if d.FirewallMark != 0 {
-		if _, err := fmt.Fprintf(w, "  fwmark: 0x%x\n", d.FirewallMark); err != nil {
+		if _, err := fmt.Fprintf(w, "  %s: 0x%x\n", bold(color, "fwmark"), d.FirewallMark); err != nil {
 			return err
 		}
 	}
@@ -55,34 +78,34 @@ func Pretty(w io.Writer, d *wgtypes.Device, now time.Time, showKeys bool) error 
 			}
 		}
 		p := &peers[i]
-		if _, err := fmt.Fprintf(w, "peer: %s\n", p.PublicKey); err != nil {
+		if _, err := fmt.Fprintf(w, "%s: %s\n", styled(color, ansiYellow+ansiBold, "peer"), styled(color, ansiYellow, p.PublicKey.String())); err != nil {
 			return err
 		}
 		if p.HasPresharedKey {
-			if _, err := fmt.Fprintf(w, "  preshared key: %s\n", displayKey(p.PresharedKey, showKeys)); err != nil {
+			if _, err := fmt.Fprintf(w, "  %s: %s\n", bold(color, "preshared key"), displayKey(p.PresharedKey, showKeys)); err != nil {
 				return err
 			}
 		}
 		if p.Endpoint != nil && (p.Endpoint.IP.To4() != nil || p.Endpoint.IP.To16() != nil) {
-			if _, err := fmt.Fprintf(w, "  endpoint: %s\n", endpoint(p.Endpoint)); err != nil {
+			if _, err := fmt.Fprintf(w, "  %s: %s\n", bold(color, "endpoint"), endpoint(p.Endpoint)); err != nil {
 				return err
 			}
 		}
-		if _, err := fmt.Fprintf(w, "  allowed ips: %s\n", prettyAllowedIPs(p.AllowedIPs)); err != nil {
+		if _, err := fmt.Fprintf(w, "  %s: %s\n", bold(color, "allowed ips"), prettyAllowedIPs(p.AllowedIPs, color)); err != nil {
 			return err
 		}
 		if !p.LastHandshakeTime.IsZero() {
-			if _, err := fmt.Fprintf(w, "  latest handshake: %s\n", ago(now, p.LastHandshakeTime)); err != nil {
+			if _, err := fmt.Fprintf(w, "  %s: %s\n", bold(color, "latest handshake"), ago(now, p.LastHandshakeTime, color)); err != nil {
 				return err
 			}
 		}
 		if p.ReceiveBytes != 0 || p.TransmitBytes != 0 {
-			if _, err := fmt.Fprintf(w, "  transfer: %s received, %s sent\n", byteCount(p.ReceiveBytes), byteCount(p.TransmitBytes)); err != nil {
+			if _, err := fmt.Fprintf(w, "  %s: %s received, %s sent\n", bold(color, "transfer"), byteCount(p.ReceiveBytes, color), byteCount(p.TransmitBytes, color)); err != nil {
 				return err
 			}
 		}
 		if p.PersistentKeepaliveInterval != 0 {
-			if _, err := fmt.Fprintf(w, "  persistent keepalive: every %s\n", durationText(p.PersistentKeepaliveInterval)); err != nil {
+			if _, err := fmt.Fprintf(w, "  %s: every %s\n", bold(color, "persistent keepalive"), durationText(p.PersistentKeepaliveInterval, color)); err != nil {
 				return err
 			}
 		}
@@ -271,8 +294,20 @@ func displayKeyValue(k wgtypes.Key, present bool) string {
 	return "(none)"
 }
 func endpoint(a *net.UDPAddr) string { return a.String() }
-func prettyAllowedIPs(ips []net.IPNet) string {
-	return joinedAllowedIPs(ips, ", ")
+func prettyAllowedIPs(ips []net.IPNet, color bool) string {
+	if len(ips) == 0 {
+		return "(none)"
+	}
+	values := make([]string, len(ips))
+	for i := range ips {
+		value := ips[i].String()
+		slash := strings.LastIndexByte(value, '/')
+		if color && slash >= 0 {
+			value = value[:slash] + styled(true, ansiCyan, "/") + value[slash+1:]
+		}
+		values[i] = value
+	}
+	return strings.Join(values, ", ")
 }
 
 func allowedIPs(ips []net.IPNet) string {
@@ -305,8 +340,10 @@ func nonNegative(v int64) int64 {
 	}
 	return v
 }
-func durationText(d time.Duration) string { return prettyDuration(uint64(d / time.Second)) }
-func prettyDuration(v uint64) string {
+func durationText(d time.Duration, color bool) string {
+	return prettyDuration(uint64(d/time.Second), color)
+}
+func prettyDuration(v uint64, color bool) string {
 	var p []string
 	for _, x := range []struct {
 		n uint64
@@ -319,21 +356,21 @@ func prettyDuration(v uint64) string {
 			if n != 1 {
 				s += "s"
 			}
-			p = append(p, fmt.Sprintf("%d %s", n, s))
+			p = append(p, fmt.Sprintf("%d %s", n, styled(color, ansiCyan, s)))
 		}
 	}
 	return strings.Join(p, ", ")
 }
-func ago(now, then time.Time) string {
+func ago(now, then time.Time, color bool) string {
 	if now.Equal(then) {
 		return "Now"
 	}
 	if now.Before(then) {
-		return "(System clock wound backward; connection problems may ensue.)"
+		return "(" + styled(color, ansiRed, "System clock wound backward; connection problems may ensue.") + ")"
 	}
-	return prettyDuration(uint64(now.Sub(then)/time.Second)) + " ago"
+	return prettyDuration(uint64(now.Sub(then)/time.Second), color) + " ago"
 }
-func byteCount(v int64) string {
+func byteCount(v int64, color bool) string {
 	n := float64(nonNegative(v))
 	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
 	i := 0
@@ -341,8 +378,9 @@ func byteCount(v int64) string {
 		n /= 1024
 		i++
 	}
+	unit := styled(color, ansiCyan, units[i])
 	if i == 0 {
-		return fmt.Sprintf("%d B", int64(n))
+		return fmt.Sprintf("%d %s", int64(n), unit)
 	}
-	return fmt.Sprintf("%.2f %s", n, units[i])
+	return fmt.Sprintf("%.2f %s", n, unit)
 }

@@ -60,6 +60,7 @@ func show(args []string, _ io.Reader, out, errOut io.Writer) int {
 		return 0
 	}
 
+	color := wgcli.ColorEnabled(out, os.Getenv("WG_COLOR_MODE"))
 	if len(args) == 0 || args[0] == "all" {
 		devices, err := client.Devices()
 		if err != nil {
@@ -77,7 +78,7 @@ func show(args []string, _ io.Reader, out, errOut io.Writer) int {
 			if i > 0 {
 				fmt.Fprintln(out)
 			}
-			if err := wgcli.Pretty(out, device, showNow(), os.Getenv("WG_HIDE_KEYS") == "never"); err != nil {
+			if err := wgcli.Pretty(out, device, showNow(), os.Getenv("WG_HIDE_KEYS") == "never", color); err != nil {
 				fmt.Fprintln(errOut, err)
 				return 1
 			}
@@ -97,7 +98,7 @@ func show(args []string, _ io.Reader, out, errOut io.Writer) int {
 		}
 		return 0
 	}
-	if err := wgcli.Pretty(out, device, showNow(), os.Getenv("WG_HIDE_KEYS") == "never"); err != nil {
+	if err := wgcli.Pretty(out, device, showNow(), os.Getenv("WG_HIDE_KEYS") == "never", color); err != nil {
 		fmt.Fprintln(errOut, err)
 		return 1
 	}

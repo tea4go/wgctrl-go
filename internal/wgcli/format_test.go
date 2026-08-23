@@ -40,7 +40,7 @@ func TestPretty(t *testing.T) {
 		},
 	}
 	var out bytes.Buffer
-	if err := Pretty(&out, d, now, false); err != nil {
+	if err := Pretty(&out, d, now, false, false); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "interface: wg0") || !strings.Contains(out.String(), "private key: (hidden)") || !strings.Contains(out.String(), "peer: "+key(3).String()) || !strings.Contains(out.String(), "latest handshake: 10 seconds ago") {
@@ -54,7 +54,7 @@ func TestPretty(t *testing.T) {
 func TestPrettyShowsKeysWhenRequested(t *testing.T) {
 	d := &wgtypes.Device{HasPrivateKey: true, PrivateKey: key(1), Peers: []wgtypes.Peer{{PublicKey: key(2), HasPresharedKey: true, PresharedKey: key(3)}}}
 	var out bytes.Buffer
-	if err := Pretty(&out, d, time.Unix(1, 0), true); err != nil {
+	if err := Pretty(&out, d, time.Unix(1, 0), true, false); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "private key: "+key(1).String()) || !strings.Contains(out.String(), "preshared key: "+key(3).String()) {
@@ -86,7 +86,7 @@ func TestPrettyPeerSpacingAndValuePresence(t *testing.T) {
 		}},
 	}
 	var out bytes.Buffer
-	if err := Pretty(&out, d, time.Unix(1, 0), false); err != nil {
+	if err := Pretty(&out, d, time.Unix(1, 0), false, false); err != nil {
 		t.Fatal(err)
 	}
 	want := "interface: wg0\n" +
@@ -126,6 +126,51 @@ func TestAllowedIPSeparators(t *testing.T) {
 	want = "(none)\t(none)\t0\toff\n" + key(1).String() + "\t(none)\t(none)\t10.0.0.0/24,2001:db8::/32\t0\t0\t0\toff\n"
 	if out.String() != want {
 		t.Fatalf("dump = %q, want %q", out.String(), want)
+	}
+}
+
+func TestPrettyColored(t *testing.T) {
+	now := time.Unix(1000, 0)
+	d := &wgtypes.Device{
+		Name:       "wg0",
+		ListenPort: 51820,
+		Peers: []wgtypes.Peer{{
+			PublicKey:                   key(1),
+			AllowedIPs:                  []net.IPNet{cidr("10.0.0.0/24")},
+			LastHandshakeTime:           time.Unix(990, 0),
+			ReceiveBytes:                1024,
+			TransmitBytes:               2048,
+			PersistentKeepaliveInterval: 25 * time.Second,
+		}},
+	}
+	var out bytes.Buffer
+	if err := Pretty(&out, d, now, false, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"\x1b[0m\x1b[32m\x1b[1minterface\x1b[0m: \x1b[32mwg0\x1b[0m\n",
+		"  \x1b[1mlistening port\x1b[0m: 51820\n",
+		"\x1b[33m\x1b[1mpeer\x1b[0m: \x1b[33m" + key(1).String() + "\x1b[0m\n",
+		"10.0.0.0\x1b[36m/\x1b[0m24",
+		"10 \x1b[36mseconds\x1b[0m ago",
+		"1.00 \x1b[36mKiB\x1b[0m received, 2.00 \x1b[36mKiB\x1b[0m sent",
+		"every 25 \x1b[36mseconds\x1b[0m",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("colored pretty output missing %q:\n%q", want, out.String())
+		}
+	}
+}
+
+func TestPrettyClockWoundBackwardColored(t *testing.T) {
+	d := &wgtypes.Device{Name: "wg0", Peers: []wgtypes.Peer{{PublicKey: key(1), LastHandshakeTime: time.Unix(2, 0)}}}
+	var out bytes.Buffer
+	if err := Pretty(&out, d, time.Unix(1, 0), false, true); err != nil {
+		t.Fatal(err)
+	}
+	want := "(\x1b[31mSystem clock wound backward; connection problems may ensue.\x1b[0m)"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("colored clock warning missing: %q", out.String())
 	}
 }
 
