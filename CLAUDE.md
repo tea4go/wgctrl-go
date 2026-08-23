@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 开发命令
 
 ```bash
-# 构建所有包及诊断工具 cmd/wgctrl
+# 构建所有包及正式命令 cmd/wg、cmd/wgd
 go build ./...
 
 # 运行常规测试套件；这也是 Linux CI 使用的测试命令
