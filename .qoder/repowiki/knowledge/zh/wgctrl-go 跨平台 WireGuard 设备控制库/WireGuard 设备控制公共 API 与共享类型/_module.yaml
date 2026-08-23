@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: public_api
+title: WireGuard 设备控制公共 API 与共享类型
+scope:
+    - client.go
+    - doc.go
+    - wgtypes/
+source_files: []
+depends_on: []
+related_to:
+    - path: cmd_tools
+    - path: os_dispatch

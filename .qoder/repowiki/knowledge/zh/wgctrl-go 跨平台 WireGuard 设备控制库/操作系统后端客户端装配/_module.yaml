@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: os_dispatch
+title: 操作系统后端客户端装配
+scope:
+    - os_linux.go
+    - os_freebsd.go
+    - os_openbsd.go
+    - os_windows.go
+    - os_userspace.go
+source_files: []
+depends_on: []
+related_to:
+    - path: public_api
