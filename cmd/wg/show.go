@@ -8,6 +8,7 @@ import (
 
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgcli"
+	"golang.zx2c4.com/wireguard/wgctrl/internal/wgconf"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgmeta"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -23,7 +24,7 @@ var showNow = time.Now
 var showMetadataPath = wgmeta.DefaultPath
 
 func attachPeerNames(device *wgtypes.Device) error {
-	return attachNames(device, showMetadataPath())
+	return wgconf.AttachNames(device, showMetadataPath())
 }
 
 func show(args []string, _ io.Reader, out, errOut io.Writer) int {
