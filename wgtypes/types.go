@@ -166,6 +166,11 @@ func (k Key) String() string {
 
 // Peer 表示 Device 的一个 WireGuard 对等节点。
 type Peer struct {
+	// Name 是用户态保存的可选对等节点名称。
+	//
+	// WireGuard 原生协议不保存此字段；nil 或空字符串表示未命名。
+	Name *string
+
 	// PublicKey 是对等节点的公钥，由其私钥计算得出。
 	//
 	// Peer 中始终存在 PublicKey 字段。
@@ -271,6 +276,11 @@ type AllowedIPConfig struct {
 // 由于某些 Go 类型的零值对 WireGuard 的 PeerConfig 字段可能具有特殊意义，
 // 因此部分字段使用了指针类型。配置对等节点时，仅会应用非 nil 的指针字段。
 type PeerConfig struct {
+	// Name 在非 nil 时指定用户态保存的对等节点名称。
+	//
+	// 非 nil 且为空字符串时清除名称。
+	Name *string
+
 	// PublicKey 指定此对等节点的公钥。PublicKey 是所有 PeerConfig 的必填字段。
 	PublicKey Key
 

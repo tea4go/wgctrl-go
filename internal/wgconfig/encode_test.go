@@ -78,6 +78,39 @@ func TestEncode(t *testing.T) {
 	}
 }
 
+func TestEncodePeerName(t *testing.T) {
+	name := "北京 #1 \"出口\""
+	d := &wgtypes.Device{Peers: []wgtypes.Peer{{Name: &name, PublicKey: testKeyValue(1)}}}
+	var got bytes.Buffer
+	if err := Encode(&got, d); err != nil {
+		t.Fatal(err)
+	}
+	want := "[Peer]\n# wgctrl-peer-name = \"北京 #1 \\\"出口\\\"\"\nPublicKey = "
+	if !strings.Contains(got.String(), want) {
+		t.Fatalf("name comment missing: %q", got.String())
+	}
+
+	parsed, err := Parse(strings.NewReader(got.String()), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Peers[0].Name == nil || *parsed.Peers[0].Name != name {
+		t.Fatalf("round-trip name: %#v", parsed.Peers[0].Name)
+	}
+}
+
+func TestEncodeOmitsEmptyPeerName(t *testing.T) {
+	empty := ""
+	d := &wgtypes.Device{Peers: []wgtypes.Peer{{Name: &empty, PublicKey: testKeyValue(1)}}}
+	var got bytes.Buffer
+	if err := Encode(&got, d); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.String(), "wgctrl-peer-name") {
+		t.Fatalf("empty name encoded: %q", got.String())
+	}
+}
+
 func TestEncodeOmitsAbsentOptionalFields(t *testing.T) {
 	d := &wgtypes.Device{Peers: []wgtypes.Peer{{PublicKey: testKeyValue(1), HasEndpoint: true, Endpoint: &net.UDPAddr{Port: 51820}}}}
 	var got bytes.Buffer

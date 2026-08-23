@@ -1,6 +1,7 @@
 package wgconfig
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -48,7 +49,22 @@ func Encode(w io.Writer, d *wgtypes.Device) error {
 }
 
 func encodePeer(w io.Writer, p *wgtypes.Peer) error {
-	if _, err := fmt.Fprintf(w, "[Peer]\nPublicKey = %s\n", p.PublicKey); err != nil {
+	if _, err := fmt.Fprintln(w, "[Peer]"); err != nil {
+		return err
+	}
+	if p.Name != nil && *p.Name != "" {
+		if err := validatePeerName(*p.Name); err != nil {
+			return fmt.Errorf("invalid peer name: %w", err)
+		}
+		encoded, err := json.Marshal(*p.Name)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(w, "# wgctrl-peer-name = %s\n", encoded); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(w, "PublicKey = %s\n", p.PublicKey); err != nil {
 		return err
 	}
 	if p.HasPresharedKey {

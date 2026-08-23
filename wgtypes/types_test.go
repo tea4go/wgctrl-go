@@ -35,11 +35,15 @@ func TestFieldPresence(t *testing.T) {
 		HasFirewallMark: true,
 	}
 	_ = wgtypes.Peer{
+		Name:                           stringPtr("branch-office"),
 		HasPresharedKey:                true,
 		HasEndpoint:                    true,
 		HasPersistentKeepaliveInterval: true,
 	}
+	_ = wgtypes.PeerConfig{Name: stringPtr("")}
 }
+
+func stringPtr(value string) *string { return &value }
 
 func TestPreparedKeys(t *testing.T) {
 	// Keys generated via "wg genkey" and "wg pubkey" for comparison

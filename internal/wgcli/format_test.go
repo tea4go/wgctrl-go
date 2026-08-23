@@ -24,6 +24,29 @@ func cidr(value string) net.IPNet {
 	return *n
 }
 
+func TestPrettyPeerName(t *testing.T) {
+	name := "branch-office"
+	d := &wgtypes.Device{Name: "wg0", Peers: []wgtypes.Peer{{Name: &name, PublicKey: key(1)}}}
+	var out bytes.Buffer
+	if err := Pretty(&out, d, time.Unix(1, 0), false, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "  name: branch-office\n") || strings.Contains(out.String(), "  name: wg0") {
+		t.Fatalf("unexpected peer name output: %q", out.String())
+	}
+
+	for _, absent := range []*string{nil, func() *string { value := ""; return &value }()} {
+		d.Peers[0].Name = absent
+		out.Reset()
+		if err := Pretty(&out, d, time.Unix(1, 0), false, false); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out.String(), "name:") {
+			t.Fatalf("absent name displayed: %q", out.String())
+		}
+	}
+}
+
 func TestPretty(t *testing.T) {
 	now := time.Unix(1000, 0)
 	d := &wgtypes.Device{

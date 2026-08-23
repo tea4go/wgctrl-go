@@ -81,6 +81,11 @@ func Pretty(w io.Writer, d *wgtypes.Device, now time.Time, showKeys, color bool)
 		if _, err := fmt.Fprintf(w, "%s: %s\n", styled(color, ansiYellow+ansiBold, "peer"), styled(color, ansiYellow, p.PublicKey.String())); err != nil {
 			return err
 		}
+		if p.Name != nil && *p.Name != "" {
+			if _, err := fmt.Fprintf(w, "  %s: %s\n", bold(color, "name"), *p.Name); err != nil {
+				return err
+			}
+		}
 		if p.HasPresharedKey {
 			if _, err := fmt.Fprintf(w, "  %s: %s\n", bold(color, "preshared key"), displayKey(p.PresharedKey, showKeys)); err != nil {
 				return err

@@ -3,6 +3,7 @@ package wgconfig
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -26,12 +28,32 @@ func Parse(r io.Reader, appendMode bool) (wgtypes.Config, error) {
 	section := ""
 	var peer *wgtypes.PeerConfig
 	var peerHasPublicKey []bool
+	peerHasName := false
 	s := bufio.NewScanner(r)
 	s.Buffer(make([]byte, 64*1024), 1024*1024)
 	lineNo := 0
 	for s.Scan() {
 		lineNo++
-		line := cleanLine(s.Text())
+		rawLine := s.Text()
+		if encodedName, ok := peerNameComment(rawLine); ok {
+			if section != "peer" || peer == nil {
+				return cfg, fmt.Errorf("line %d: peer name outside a Peer section", lineNo)
+			}
+			if peerHasName {
+				return cfg, fmt.Errorf("line %d: duplicate peer name", lineNo)
+			}
+			var name string
+			if err := json.Unmarshal([]byte(encodedName), &name); err != nil {
+				return cfg, fmt.Errorf("line %d: invalid peer name: %w", lineNo, err)
+			}
+			if err := validatePeerName(name); err != nil {
+				return cfg, fmt.Errorf("line %d: invalid peer name: %w", lineNo, err)
+			}
+			peer.Name = &name
+			peerHasName = true
+			continue
+		}
+		line := cleanLine(rawLine)
 		if line == "" {
 			continue
 		}
@@ -40,11 +62,13 @@ func Parse(r io.Reader, appendMode bool) (wgtypes.Config, error) {
 			switch name {
 			case "interface":
 				section, peer = "interface", nil
+				peerHasName = false
 			case "peer":
 				cfg.Peers = append(cfg.Peers, wgtypes.PeerConfig{ReplaceAllowedIPs: true})
 				peerHasPublicKey = append(peerHasPublicKey, false)
 				peer = &cfg.Peers[len(cfg.Peers)-1]
 				section = "peer"
+				peerHasName = false
 			default:
 				return cfg, fmt.Errorf("line %d: unknown section %q", lineNo, name)
 			}
@@ -134,6 +158,32 @@ func Parse(r io.Reader, appendMode bool) (wgtypes.Config, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func peerNameComment(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	const prefix = "# wgctrl-peer-name"
+	if !strings.HasPrefix(line, prefix) {
+		return "", false
+	}
+	rest := strings.TrimSpace(line[len(prefix):])
+	if !strings.HasPrefix(rest, "=") {
+		return "", false
+	}
+	return strings.TrimSpace(rest[1:]), true
+}
+
+func validatePeerName(name string) error {
+	if !utf8.ValidString(name) {
+		return fmt.Errorf("invalid UTF-8")
+	}
+	if len(name) > 255 {
+		return fmt.Errorf("name is longer than 255 bytes")
+	}
+	if strings.ContainsAny(name, "\x00\r\n") {
+		return fmt.Errorf("name contains a forbidden control character")
+	}
+	return nil
 }
 
 func cleanLine(input string) string {

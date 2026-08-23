@@ -29,11 +29,11 @@ var commands = map[string]commandFunc{
 	"show": func(args []string, in io.Reader, out, errOut io.Writer) int {
 		return showCommand(args, in, out, errOut)
 	},
-	"showconf": unimplementedCommand,
+	"showconf": showconf,
 	"set":      unimplementedCommand,
-	"setconf":  unimplementedCommand,
-	"addconf":  unimplementedCommand,
-	"syncconf": unimplementedCommand,
+	"setconf":  setconf,
+	"addconf":  addconf,
+	"syncconf": syncconf,
 	"genkey":   unimplementedCommand,
 	"genpsk":   unimplementedCommand,
 	"pubkey":   unimplementedCommand,

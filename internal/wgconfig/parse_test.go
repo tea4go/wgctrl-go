@@ -46,6 +46,40 @@ func TestParseValidConfiguration(t *testing.T) {
 	}
 }
 
+func TestParsePeerNameComment(t *testing.T) {
+	input := "[Peer]\n# wgctrl-peer-name = \"北京 #1 \\\"出口\\\"\"\nPublicKey=" + testKey + "\n"
+	got, err := Parse(strings.NewReader(input), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Peers[0].Name == nil || *got.Peers[0].Name != "北京 #1 \"出口\"" {
+		t.Fatalf("unexpected name: %#v", got.Peers[0].Name)
+	}
+
+	got, err = Parse(strings.NewReader("[Peer]\nPublicKey="+testKey+"\n"), false)
+	if err != nil || got.Peers[0].Name != nil {
+		t.Fatalf("legacy configuration name=%#v err=%v", got.Peers[0].Name, err)
+	}
+
+	got, err = Parse(strings.NewReader("[Peer]\n# wgctrl-peer-name = \"\"\nPublicKey="+testKey+"\n"), false)
+	if err != nil || got.Peers[0].Name == nil || *got.Peers[0].Name != "" {
+		t.Fatalf("empty name=%#v err=%v", got.Peers[0].Name, err)
+	}
+}
+
+func TestParseRejectsInvalidPeerNameComment(t *testing.T) {
+	for _, input := range []string{
+		"# wgctrl-peer-name = \"outside\"\n[Peer]\nPublicKey=" + testKey,
+		"[Peer]\n# wgctrl-peer-name = \"one\"\n# wgctrl-peer-name = \"two\"\nPublicKey=" + testKey,
+		"[Peer]\n# wgctrl-peer-name = invalid\nPublicKey=" + testKey,
+		"[Peer]\n# wgctrl-peer-name = \"bad\\nname\"\nPublicKey=" + testKey,
+	} {
+		if _, err := Parse(strings.NewReader(input+"\n"), false); err == nil {
+			t.Fatalf("accepted invalid name comment: %q", input)
+		}
+	}
+}
+
 func TestParseRepeatedAllowedIPsFields(t *testing.T) {
 	tests := []struct {
 		name       string

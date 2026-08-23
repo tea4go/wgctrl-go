@@ -8,6 +8,7 @@ import (
 
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgcli"
+	"golang.zx2c4.com/wireguard/wgctrl/internal/wgmeta"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -19,6 +20,11 @@ type showClient interface {
 
 var newShowClient = func() (showClient, error) { return wgctrl.New() }
 var showNow = time.Now
+var showMetadataPath = wgmeta.DefaultPath
+
+func attachPeerNames(device *wgtypes.Device) error {
+	return attachNames(device, showMetadataPath())
+}
 
 func show(args []string, _ io.Reader, out, errOut io.Writer) int {
 	if len(args) == 1 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
@@ -75,6 +81,9 @@ func show(args []string, _ io.Reader, out, errOut io.Writer) int {
 				}
 				continue
 			}
+			if err := attachPeerNames(device); err != nil {
+				fmt.Fprintf(errOut, "警告: 无法读取节点名称: %v\n", err)
+			}
 			if i > 0 {
 				fmt.Fprintln(out)
 			}
@@ -97,6 +106,9 @@ func show(args []string, _ io.Reader, out, errOut io.Writer) int {
 			return 1
 		}
 		return 0
+	}
+	if err := attachPeerNames(device); err != nil {
+		fmt.Fprintf(errOut, "警告: 无法读取节点名称: %v\n", err)
 	}
 	if err := wgcli.Pretty(out, device, showNow(), os.Getenv("WG_HIDE_KEYS") == "never", color); err != nil {
 		fmt.Fprintln(errOut, err)
