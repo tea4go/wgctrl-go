@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -23,7 +24,18 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgmeta"
 )
 
-var version = "wgctrl-go wgd v1.0.20260223"
+var (
+	version   = "v1.0.20260223"
+	BuildTime = ""
+)
+
+func runtimeBuildInfo() (string, string, string) {
+	buildTime := BuildTime
+	if buildTime == "" {
+		buildTime = "unknown"
+	}
+	return "wgctrl-go wgd " + version, buildTime, runtime.GOOS + "-" + runtime.GOARCH
+}
 
 func main() {
 	var (
@@ -41,8 +53,10 @@ func main() {
 	}
 	defer client.Close()
 
+	appVersion, buildTime, platform := runtimeBuildInfo()
 	opts := []wgapi.Option{
-		wgapi.Version(version),
+		wgapi.Version(appVersion),
+		wgapi.BuildInfo(buildTime, platform),
 		wgapi.Logger(logger),
 	}
 	if *hideKeys {
