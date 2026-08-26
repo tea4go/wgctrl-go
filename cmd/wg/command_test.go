@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -15,13 +16,45 @@ func TestExecuteVersion(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("unexpected exit code: %d", code)
 			}
-			if want := "wireguard-tools v1.0.20260223 - https://git.zx2c4.com/wireguard-tools/\n"; out.String() != want {
+			if want := versionText(); out.String() != want {
 				t.Fatalf("unexpected stdout: %q", out.String())
 			}
 			if errOut.Len() != 0 {
 				t.Fatalf("unexpected stderr: %q", errOut.String())
 			}
 		})
+	}
+}
+
+func TestVersionTextIncludesBuildMetadata(t *testing.T) {
+	oldVersion, oldBuildTime := version, BuildTime
+	t.Cleanup(func() {
+		version = oldVersion
+		BuildTime = oldBuildTime
+	})
+
+	version = "v4.1.0"
+	BuildTime = "2026-08-26(21:00:00)"
+
+	got := versionText()
+	for _, want := range []string{
+		"wireguard-tools v4.1.0",
+		"Build Time : 2026-08-26(21:00:00)",
+		"Platform   : " + runtime.GOOS + "-" + runtime.GOARCH,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("versionText()=%q, missing %q", got, want)
+		}
+	}
+}
+
+func TestVersionTextUsesUnknownBuildTime(t *testing.T) {
+	oldBuildTime := BuildTime
+	t.Cleanup(func() { BuildTime = oldBuildTime })
+	BuildTime = ""
+
+	if got := versionText(); !strings.Contains(got, "Build Time : unknown") {
+		t.Fatalf("versionText()=%q", got)
 	}
 }
 

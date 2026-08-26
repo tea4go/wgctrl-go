@@ -173,19 +173,20 @@ if ($OS -eq 'windows') {
 }
 
 # ============================================================
-#  Build with ldflags injection — values injected into
-#  Go `package main` variables defined in cmd/wgd/main.go:
-#    - main.version        (wgctrl-go wgd + computed APP_VER_FULL)
+#  Build with ldflags injection — both commands receive the same:
+#    - main.version        (computed APP_VER_FULL)
+#    - main.BuildTime      ("yyyy-MM-dd(HH:mm:ss)")
 # ============================================================
 $LDFLAGS_PARTS = @('-s', '-w')
-$LDFLAGS_PARTS += "-X 'main.version=$WGD_VERSION'"
+$LDFLAGS_PARTS += "-X main.version=$APP_VER_FULL"
+$LDFLAGS_PARTS += "-X `"main.BuildTime=$BuildTime`""
 $LDFLAGS = $LDFLAGS_PARTS -join ' '
 
 $env:GOOS = $TargetGOOS
 $env:GOARCH = $Arch
 
-Write-Host "执行构建: GOOS=$TargetGOOS GOARCH=$Arch go build -buildvcs=false -trimpath -o `"$WG_OUT_BIN_NAME`" $WG_TARGET_PACKAGE"
-& go build -buildvcs=false -trimpath -o $WG_OUT_BIN_NAME $WG_TARGET_PACKAGE
+Write-Host "执行构建: GOOS=$TargetGOOS GOARCH=$Arch go build -buildvcs=false -trimpath -ldflags `"$LDFLAGS`" -o `"$WG_OUT_BIN_NAME`" $WG_TARGET_PACKAGE"
+& go build -buildvcs=false -trimpath -ldflags $LDFLAGS -o $WG_OUT_BIN_NAME $WG_TARGET_PACKAGE
 if ($LASTEXITCODE -ne 0) {
     Write-Host '[错误] 构建 wg 失败。' -ForegroundColor Red
     exit $LASTEXITCODE

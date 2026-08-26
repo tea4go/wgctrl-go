@@ -108,6 +108,33 @@ func TestVersion(t *testing.T) {
 	}
 }
 
+func TestVersionIncludesBuildInfo(t *testing.T) {
+	srv := New(
+		&fakeClient{},
+		filepath.Join(t.TempDir(), "peer-names.json"),
+		Version("wgctrl-go wgd v4.1.0"),
+		BuildInfo("2026-08-26(21:00:00)", "linux-amd64"),
+	)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/version", nil)
+	rec := httptest.NewRecorder()
+
+	srv.Handler().ServeHTTP(rec, req)
+
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("解析响应失败: %v, body=%q", err, rec.Body.String())
+	}
+	if got["version"] != "wgctrl-go wgd v4.1.0" {
+		t.Fatalf("version=%q", got["version"])
+	}
+	if got["build_time"] != "2026-08-26(21:00:00)" {
+		t.Fatalf("build_time=%q", got["build_time"])
+	}
+	if got["platform"] != "linux-amd64" {
+		t.Fatalf("platform=%q", got["platform"])
+	}
+}
+
 func TestInterfaces(t *testing.T) {
 	c := &fakeClient{devices: []*wgtypes.Device{{Name: "wg0"}, {Name: "wg1"}}}
 	ts, _ := newTestServer(t, c)

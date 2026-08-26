@@ -28,11 +28,13 @@ type Client interface {
 // A Server 通过 REST API 暴露 WireGuard 设备管理能力，
 // 覆盖 wg(8) 全部子命令对应的操作。
 type Server struct {
-	client   Client
-	metadata string
-	hideKeys bool
-	version  string
-	logf     *log.Logger
+	client    Client
+	metadata  string
+	hideKeys  bool
+	version   string
+	buildTime string
+	platform  string
+	logf      *log.Logger
 
 	// mu 串行化所有写操作，避免并发配置设备与元数据。
 	mu sync.Mutex
@@ -49,6 +51,14 @@ func HideKeys() Option {
 // Version 设置 /api/v1/version 报告的版本字符串。
 func Version(v string) Option {
 	return func(s *Server) { s.version = v }
+}
+
+// BuildInfo 设置 /api/v1/version 报告的构建时间和目标平台。
+func BuildInfo(buildTime, platform string) Option {
+	return func(s *Server) {
+		s.buildTime = buildTime
+		s.platform = platform
+	}
 }
 
 // Logger 设置服务日志输出；nil 表示丢弃日志。
@@ -119,7 +129,11 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"version": s.version})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"version":    s.version,
+		"build_time": s.buildTime,
+		"platform":   s.platform,
+	})
 }
 
 func (s *Server) handleInterfaces(w http.ResponseWriter, _ *http.Request) {
