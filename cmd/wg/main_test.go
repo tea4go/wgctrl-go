@@ -125,7 +125,7 @@ func TestRunShowsVersionFromMainFlags(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("unexpected exit code: %d", code)
 	}
-	if out.String() != version {
+	if out.String() != versionText() {
 		t.Fatalf("unexpected stdout: %q", out.String())
 	}
 	if errOut.Len() != 0 {

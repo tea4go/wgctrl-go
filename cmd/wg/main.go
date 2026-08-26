@@ -52,7 +52,7 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 	}
 
 	if opts.showVersion {
-		_, _ = io.WriteString(out, version)
+		_, _ = io.WriteString(out, versionText())
 		return 0
 	}
 	if opts.showHelp {
