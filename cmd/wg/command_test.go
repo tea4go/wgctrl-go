@@ -8,7 +8,7 @@ import (
 )
 
 func TestExecuteVersion(t *testing.T) {
-	for _, arg := range []string{"version", "-v", "--version"} {
+	for _, arg := range []string{"version"} {
 		t.Run(arg, func(t *testing.T) {
 			var out, errOut bytes.Buffer
 			code := execute([]string{arg}, strings.NewReader(""), &out, &errOut)
@@ -26,7 +26,7 @@ func TestExecuteVersion(t *testing.T) {
 }
 
 func TestExecuteHelp(t *testing.T) {
-	for _, arg := range []string{"help", "-h", "--help"} {
+	for _, arg := range []string{"help"} {
 		t.Run(arg, func(t *testing.T) {
 			var out, errOut bytes.Buffer
 			code := execute([]string{arg}, strings.NewReader(""), &out, &errOut)

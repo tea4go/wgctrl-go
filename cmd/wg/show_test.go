@@ -101,3 +101,40 @@ func TestShowRejectsInvalidField(t *testing.T) {
 		t.Fatalf("code=%d out=%q err=%q", code, out.String(), errOut.String())
 	}
 }
+
+func TestShowLogsWhenNoInterfacesFound(t *testing.T) {
+	oldClient := newShowClient
+	oldNotice := showNoticeLog
+	t.Cleanup(func() {
+		newShowClient = oldClient
+		showNoticeLog = oldNotice
+	})
+	newShowClient = func() (showClient, error) {
+		return &fakeShowClient{devices: []*wgtypes.Device{}}, nil
+	}
+
+	var notices []string
+	showNoticeLog = func(format string, v ...interface{}) {
+		notices = append(notices, format)
+	}
+
+	for _, args := range [][]string{nil, {"interfaces"}} {
+		var out, errOut bytes.Buffer
+		if code := show(args, strings.NewReader(""), &out, &errOut); code != 0 {
+			t.Fatalf("args=%v code=%d err=%q", args, code, errOut.String())
+		}
+		if out.Len() != 0 {
+			t.Fatalf("args=%v unexpected stdout: %q", args, out.String())
+		}
+	}
+
+	if len(notices) != 2 {
+		t.Fatalf("notices=%v", notices)
+	}
+	if notices[0] != "wg show 未发现任何 WireGuard 接口，输出为空" {
+		t.Fatalf("unexpected notice[0]=%q", notices[0])
+	}
+	if notices[1] != "wg show interfaces 未发现任何 WireGuard 接口" {
+		t.Fatalf("unexpected notice[1]=%q", notices[1])
+	}
+}

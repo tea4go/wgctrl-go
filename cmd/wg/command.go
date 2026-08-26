@@ -7,7 +7,11 @@ import (
 
 const (
 	version = "wireguard-tools v1.0.20260223 - https://git.zx2c4.com/wireguard-tools/\n"
-	usage   = "用法: wg <命令> [<参数>]\n\n" +
+	usage   = "用法: wg [-l <0-7>] <命令> [<参数>]\n\n" +
+		"全局参数:\n" +
+		"  -l, --log_level <0-7>: 设置日志级别，数字越大日志越详细\n" +
+		"  -N, --log_name <名称>: 设置日志名称\n" +
+		"      --log_short: 使用简化日志格式\n\n" +
 		"可用子命令:\n" +
 		"  show: 显示当前配置和设备信息\n" +
 		"  showconf: 显示指定 WireGuard 接口的当前配置，供 `setconf' 使用\n" +
@@ -46,10 +50,10 @@ func execute(args []string, in io.Reader, out, errOut io.Writer) int {
 
 	if len(args) == 1 {
 		switch args[0] {
-		case "version", "-v", "--version":
+		case "version":
 			_, _ = io.WriteString(out, version)
 			return 0
-		case "help", "-h", "--help":
+		case "help":
 			_, _ = io.WriteString(out, usage)
 			return 0
 		}

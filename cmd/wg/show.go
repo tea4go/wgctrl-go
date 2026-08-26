@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	logs "github.com/tea4go/gh/log4go"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgcli"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgconf"
@@ -22,6 +23,7 @@ type showClient interface {
 var newShowClient = func() (showClient, error) { return wgctrl.New() }
 var showNow = time.Now
 var showMetadataPath = wgmeta.DefaultPath
+var showNoticeLog = func(format string, v ...interface{}) { logs.Notice(format, v...) }
 
 func attachPeerNames(device *wgtypes.Device) error {
 	return wgconf.AttachNames(device, showMetadataPath())
@@ -55,6 +57,10 @@ func show(args []string, _ io.Reader, out, errOut io.Writer) int {
 			fmt.Fprintf(errOut, "无法列出接口: %v\n", err)
 			return 1
 		}
+		if len(devices) == 0 {
+			showNoticeLog("wg show interfaces 未发现任何 WireGuard 接口")
+			return 0
+		}
 		for i, device := range devices {
 			if i > 0 {
 				fmt.Fprint(out, " ")
@@ -73,6 +79,10 @@ func show(args []string, _ io.Reader, out, errOut io.Writer) int {
 		if err != nil {
 			fmt.Fprintf(errOut, "无法列出接口: %v\n", err)
 			return 1
+		}
+		if len(devices) == 0 {
+			showNoticeLog("wg show 未发现任何 WireGuard 接口，输出为空")
+			return 0
 		}
 		for i, device := range devices {
 			if len(args) == 2 {
