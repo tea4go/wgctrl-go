@@ -78,6 +78,22 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestAutotest(t *testing.T) {
+	ts, _ := newTestServer(t, &fakeClient{})
+	req := httptest.NewRequest(http.MethodGet, ts.URL+"/autotest", nil)
+	rec := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "text/plain; charset=utf-8" {
+		t.Fatalf("content-type=%q", got)
+	}
+	if got := rec.Body.String(); got != "OK" {
+		t.Fatalf("body=%q", got)
+	}
+}
+
 func TestVersion(t *testing.T) {
 	ts, _ := newTestServer(t, &fakeClient{})
 	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/version", nil)

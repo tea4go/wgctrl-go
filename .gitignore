@@ -1,4 +1,8 @@
 cmd/wgctrl/wgctrl
-*.test
 cmd/wg/wg.exe
+wgd
+wg
+*.test
 go.mod
+.gocache
+.gotmp

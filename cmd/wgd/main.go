@@ -23,7 +23,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgmeta"
 )
 
-const version = "wgctrl-go wgd v1.0.20260223"
+var version = "wgctrl-go wgd v1.0.20260223"
 
 func main() {
 	var (

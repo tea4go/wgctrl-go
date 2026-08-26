@@ -77,6 +77,7 @@ func New(c Client, metadataPath string, opts ...Option) *Server {
 //
 // 端点一览：
 //
+//	GET    /autotest                        自动化测试探活
 //	GET    /api/v1/health                   服务健康检查
 //	GET    /api/v1/version                  wg version
 //	GET    /api/v1/interfaces               wg show interfaces
@@ -91,6 +92,7 @@ func New(c Client, metadataPath string, opts ...Option) *Server {
 //	POST   /api/v1/pubkey                   wg pubkey
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/autotest", s.handleAutotest)
 	mux.HandleFunc("/api/v1/health", s.handleHealth)
 	mux.HandleFunc("/api/v1/version", s.handleVersion)
 	mux.HandleFunc("/api/v1/interfaces", s.handleInterfaces)
@@ -100,6 +102,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/genpsk", s.handleGenPsk)
 	mux.HandleFunc("/api/v1/pubkey", s.handlePubkey)
 	return mux
+}
+
+func (s *Server) handleAutotest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, "GET")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, "OK")
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
