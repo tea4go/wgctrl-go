@@ -25,20 +25,25 @@ $env:GOTMPDIR = Join-Path $SCRIPT_DIR '.gotmp'
 switch ($OS) {
     'windows' {
         $TargetGOOS = 'windows'
-        $OUT_BIN_NAME = 'wgd.exe'
+        $WG_OUT_BIN_NAME = 'wg.exe'
+        $WGD_OUT_BIN_NAME = 'wgd.exe'
     }
     'linux' {
         $TargetGOOS = 'linux'
-        $OUT_BIN_NAME = 'wgd'
+        $WG_OUT_BIN_NAME = 'wg'
+        $WGD_OUT_BIN_NAME = 'wgd'
     }
     'macos' {
         $TargetGOOS = 'darwin'
-        $OUT_BIN_NAME = 'wgd'
+        $WG_OUT_BIN_NAME = 'wg'
+        $WGD_OUT_BIN_NAME = 'wgd'
     }
 }
 
-$TARGET_PACKAGE = './cmd/wgd'
-$RUN_EXE = Join-Path $SCRIPT_DIR $OUT_BIN_NAME
+$WG_TARGET_PACKAGE = './cmd/wg'
+$WGD_TARGET_PACKAGE = './cmd/wgd'
+$WG_EXE = Join-Path $SCRIPT_DIR $WG_OUT_BIN_NAME
+$RUN_EXE = Join-Path $SCRIPT_DIR $WGD_OUT_BIN_NAME
 
 if (-not (Test-Path $env:GOCACHE))  { New-Item -ItemType Directory -Path $env:GOCACHE  -Force | Out-Null }
 if (-not (Test-Path $env:GOTMPDIR)) { New-Item -ItemType Directory -Path $env:GOTMPDIR -Force | Out-Null }
@@ -150,6 +155,7 @@ Write-Host "程序版本    : $WGD_VERSION"
 Write-Host "监听地址    : $($env:WGD_LISTEN)"
 Write-Host "Metadata    : $WGD_METADATA_USE"
 Write-Host "隐藏密钥    : $($env:WGD_HIDE_KEYS)"
+Write-Host "输出文件    : $WG_EXE"
 Write-Host "输出文件    : $RUN_EXE"
 Write-Host '======================================================='
 
@@ -178,10 +184,18 @@ $LDFLAGS = $LDFLAGS_PARTS -join ' '
 $env:GOOS = $TargetGOOS
 $env:GOARCH = $Arch
 
-Write-Host "执行构建: GOOS=$TargetGOOS GOARCH=$Arch go build -buildvcs=false -trimpath -ldflags `"$LDFLAGS`" -o `"$OUT_BIN_NAME`" $TARGET_PACKAGE"
-& go build -buildvcs=false -trimpath -ldflags $LDFLAGS -o $OUT_BIN_NAME $TARGET_PACKAGE
+Write-Host "执行构建: GOOS=$TargetGOOS GOARCH=$Arch go build -buildvcs=false -trimpath -o `"$WG_OUT_BIN_NAME`" $WG_TARGET_PACKAGE"
+& go build -buildvcs=false -trimpath -o $WG_OUT_BIN_NAME $WG_TARGET_PACKAGE
 if ($LASTEXITCODE -ne 0) {
-    Write-Host '[错误] 构建失败。' -ForegroundColor Red
+    Write-Host '[错误] 构建 wg 失败。' -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+Write-Host "构建成功: $WG_EXE" -ForegroundColor Green
+
+Write-Host "执行构建: GOOS=$TargetGOOS GOARCH=$Arch go build -buildvcs=false -trimpath -ldflags `"$LDFLAGS`" -o `"$WGD_OUT_BIN_NAME`" $WGD_TARGET_PACKAGE"
+& go build -buildvcs=false -trimpath -ldflags $LDFLAGS -o $WGD_OUT_BIN_NAME $WGD_TARGET_PACKAGE
+if ($LASTEXITCODE -ne 0) {
+    Write-Host '[错误] 构建 wgd 失败。' -ForegroundColor Red
     exit $LASTEXITCODE
 }
 Write-Host "构建成功: $RUN_EXE" -ForegroundColor Green
@@ -189,6 +203,7 @@ Write-Host "构建成功: $RUN_EXE" -ForegroundColor Green
 # Optional: copy to PATH alias directory if exists
 $ALIAS_DIR = 'C:\DevDisk\Other\Alias'
 if ($OS -eq 'windows' -and (Test-Path $ALIAS_DIR)) {
+    Copy-Item -Path $WG_EXE -Destination $ALIAS_DIR -Force -ErrorAction SilentlyContinue
     Copy-Item -Path $RUN_EXE -Destination $ALIAS_DIR -Force -ErrorAction SilentlyContinue
 }
 
@@ -252,6 +267,6 @@ if ($isAdmin) {
 }
 
 # 提权
-Write-Host "正在请求管理员权限以启动 $OUT_BIN_NAME ..." -ForegroundColor Cyan
+Write-Host "正在请求管理员权限以启动 $WGD_OUT_BIN_NAME ..." -ForegroundColor Cyan
 $procInfo = Start-Process -FilePath $RUN_EXE -ArgumentList $exeArgs -Verb RunAs -Wait -PassThru
 exit $procInfo.ExitCode
