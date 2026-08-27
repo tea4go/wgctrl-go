@@ -6,3 +6,5 @@ wg
 go.mod
 .gocache
 .gotmp
+wg.exe
+wgd.exe
