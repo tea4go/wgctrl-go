@@ -33,12 +33,27 @@ func (c *fakeClient) ConfigureDevice(_ string, cfg wgtypes.Config) error {
 	return c.err
 }
 
+// defaultTestAPIKey 是历史 newTestServer 用例使用的固定 key；会被 autoAuthed 包装自动注入请求头。
+const defaultTestAPIKey = "test-server-default-api-key"
+
 func newTestServer(t *testing.T, c Client) (*httptest.Server, string) {
 	t.Helper()
-	srv := NewRestServer(c, t.TempDir())
-	ts := httptest.NewServer(srv.Handler())
+	// 旧用例全部默认注入一个固定 key，并在 httptest.Server 外层自动补 header，保持原编写风格。
+	srv := NewRestServer(c, t.TempDir(), APIKey(defaultTestAPIKey))
+	ts := httptest.NewServer(autoAuthed{next: srv.Handler()})
 	t.Cleanup(ts.Close)
 	return ts, srv.metadata
+}
+
+// autoAuthed 在把请求交给真实 Handler 前自动注入默认 X-API-Key，
+// 让大量历史用例无需逐个加 header；若请求里已经有 header 则保持原样。
+type autoAuthed struct{ next http.Handler }
+
+func (a autoAuthed) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("X-API-Key") == "" {
+		r.Header.Set("X-API-Key", defaultTestAPIKey)
+	}
+	a.next.ServeHTTP(w, r)
 }
 
 func sampleDevice() *wgtypes.Device {
@@ -114,8 +129,10 @@ func TestVersionIncludesBuildInfo(t *testing.T) {
 		t.TempDir(),
 		Version("wgctrl-go wgd v4.1.0"),
 		BuildInfo("2026-08-26(21:00:00)", "linux-amd64"),
+		APIKey(defaultTestAPIKey), // 现在鉴权强制要求 Server 有 key，否则 /version 会 500
 	)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/version", nil)
+	req.Header.Set("X-API-Key", defaultTestAPIKey)
 	rec := httptest.NewRecorder()
 
 	srv.Handler().ServeHTTP(rec, req)
@@ -390,6 +407,7 @@ func TestMethodNotAllowed(t *testing.T) {
 
 func newTestServerWithOpts(t *testing.T, c Client, opts ...Option) (*httptest.Server, string) {
 	t.Helper()
+	// 鉴权相关用例：完全控制自己的 header，不自动注入任何 X-API-Key。
 	srv := NewRestServer(c, t.TempDir(), opts...)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
@@ -475,13 +493,21 @@ func TestAuthWhitelistHealthAndAutotest(t *testing.T) {
 	}
 }
 
-func TestAuthDisabledWhenKeyEmpty(t *testing.T) {
-	ts, _ := newTestServerWithOpts(t, &fakeClient{devices: []*wgtypes.Device{sampleDevice()}}) // 不传 APIKey
+func TestAuthEmptyApiKeyRejectsAll(t *testing.T) {
+	// 故意不传 APIKey：Server 层面对未注入 key 的情况必须返回 500 + 错误 JSON，
+	// 绝对不能"偷偷放行"。
+	ts, _ := newTestServerWithOpts(t, &fakeClient{devices: []*wgtypes.Device{sampleDevice()}})
 	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/interfaces", nil)
-	// 不带任何 header
 	rec := httptest.NewRecorder()
 	ts.Config.Handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("code=%d body=%q (key 为空应禁用鉴权)", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("code=%d want=500 body=%q", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if !strings.Contains(body["error"], "misconfigured") && !strings.Contains(body["error"], "api key not set") {
+		t.Fatalf("error=%q", body["error"])
 	}
 }

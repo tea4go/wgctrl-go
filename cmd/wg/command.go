@@ -7,7 +7,9 @@ import (
 )
 
 var (
+	appName   = "wg"
 	version   = "v1.0.20260223"
+	IsBeta    string
 	BuildTime = ""
 )
 

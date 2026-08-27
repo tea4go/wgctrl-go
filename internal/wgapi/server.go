@@ -126,16 +126,21 @@ func (s *Server) Handler() http.Handler {
 	return s.withLogging(s.withAuth(mux))
 }
 
-// withAuth 是 X-API-Key 静态鉴权中间件。白名单路径：/autotest、/api/v1/health。
+// withAuth 是 X-API-Key 静态鉴权中间件。
+// 安全约束：只要构建了 Server，鉴权就必须生效，不允许 s.apiKey 为空时"默认放行"。
+// 主程序必须通过 APIKey Option 注入 key（或留空触发自动生成），不允许出现无鉴权模式。
+// 白名单路径仅 /autotest 和 /api/v1/health，供反代探活和自检使用。
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.apiKey == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
 		path := r.URL.Path
 		if path == "/autotest" || path == "/api/v1/health" {
 			next.ServeHTTP(w, r)
+			return
+		}
+		if s.apiKey == "" {
+			logs.Critical("[API] 拒绝请求 %s %s：Server 未注入 APIKey（这是配置错误）。启动 wgd 时会自动生成，手工构造 Server 请传 APIKey(…) Option。", r.Method, path)
+			w.Header().Set("WWW-Authenticate", "X-API-Key")
+			s.writeError(w, http.StatusInternalServerError, errors.New("server misconfigured: api key not set"))
 			return
 		}
 		got := r.Header.Get("X-API-Key")

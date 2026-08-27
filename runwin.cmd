@@ -11,5 +11,6 @@ if not exist "%PS1_SCRIPT%" (
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS1_SCRIPT%" %*
 
-wgd -l=7
+rem wgd -l=7
+wg -l=7 -h
 exit /b %ERRORLEVEL%
