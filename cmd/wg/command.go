@@ -8,13 +8,13 @@ import (
 const usage = "可用子命令:\n" +
 	"  show: 显示当前配置和设备信息\n" +
 	"  showconf: 显示指定 WireGuard 接口的当前配置，供 `setconf' 使用\n" +
-	"  set: 修改当前配置、添加对等节点、移除对等节点或修改对等节点\n" +
+	"  set: 修改当前配置、添加对等节点、移除对等节点或修改对等节点（尚未实现）\n" +
 	"  setconf: 将配置文件应用到 WireGuard 接口\n" +
 	"  addconf: 向 WireGuard 接口追加配置文件\n" +
 	"  syncconf: 将配置文件同步到 WireGuard 接口\n" +
-	"  genkey: 生成新的私钥并写入标准输出\n" +
-	"  genpsk: 生成新的预共享密钥并写入标准输出\n" +
-	"  pubkey: 从标准输入读取私钥并将公钥写入标准输出\n"
+	"  genkey: 生成新的私钥并写入标准输出（尚未实现）\n" +
+	"  genpsk: 生成新的预共享密钥并写入标准输出（尚未实现）\n" +
+	"  pubkey: 从标准输入读取私钥并将公钥写入标准输出（尚未实现）\n"
 
 type commandFunc func(args []string, in io.Reader, out, errOut io.Writer) int
 
@@ -25,13 +25,13 @@ var commands = map[string]commandFunc{
 		return showCommand(args, in, out, errOut)
 	},
 	"showconf": showconf,
-	"set":      unimplementedCommand,
+	"set":      unimplementedCommand("set"),
 	"setconf":  setconf,
 	"addconf":  addconf,
 	"syncconf": syncconf,
-	"genkey":   unimplementedCommand,
-	"genpsk":   unimplementedCommand,
-	"pubkey":   unimplementedCommand,
+	"genkey":   unimplementedCommand("genkey"),
+	"genpsk":   unimplementedCommand("genpsk"),
+	"pubkey":   unimplementedCommand("pubkey"),
 }
 
 func execute(args []string, in io.Reader, out, errOut io.Writer) int {
@@ -48,6 +48,9 @@ func execute(args []string, in io.Reader, out, errOut io.Writer) int {
 	return command(args[1:], in, out, errOut)
 }
 
-func unimplementedCommand(_ []string, _ io.Reader, _ io.Writer, _ io.Writer) int {
-	return 1
+func unimplementedCommand(name string) commandFunc {
+	return func(_ []string, _ io.Reader, _ io.Writer, errOut io.Writer) int {
+		fmt.Fprintf(errOut, "错误: wg %s 命令尚未实现\n", name)
+		return 1
+	}
 }

@@ -76,6 +76,37 @@ func TestExecuteHelp(t *testing.T) {
 	}
 }
 
+func TestExecuteUnimplementedCommands(t *testing.T) {
+	for _, command := range []string{"set", "genkey", "genpsk", "pubkey"} {
+		t.Run(command, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			code := execute([]string{command}, strings.NewReader(""), &out, &errOut)
+			if code != 1 {
+				t.Fatalf("unexpected exit code: %d", code)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("unexpected stdout: %q", out.String())
+			}
+			if want := "错误: wg " + command + " 命令尚未实现\n"; errOut.String() != want {
+				t.Fatalf("unexpected stderr: %q", errOut.String())
+			}
+		})
+	}
+}
+
+func TestUsageMarksUnimplementedCommands(t *testing.T) {
+	for _, command := range []string{"set", "genkey", "genpsk", "pubkey"} {
+		if !strings.Contains(usage, "  "+command+":") {
+			t.Fatalf("usage missing command %q", command)
+		}
+		for _, line := range strings.Split(usage, "\n") {
+			if strings.HasPrefix(line, "  "+command+":") && !strings.HasSuffix(line, "（尚未实现）") {
+				t.Fatalf("command %q is not marked unimplemented: %q", command, line)
+			}
+		}
+	}
+}
+
 func TestExecuteInvalidSubcommand(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := execute([]string{"invalid"}, strings.NewReader(""), &out, &errOut)
