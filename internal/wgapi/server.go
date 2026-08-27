@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,6 +24,22 @@ type Client interface {
 	ConfigureDevice(string, wgtypes.Config) error
 }
 
+// LogPrinter 是服务日志输出接口，只需要 Printf 方法。
+type LogPrinter interface {
+	Printf(format string, v ...interface{})
+}
+
+// LogPrinterFunc 是函数型 LogPrinter 适配器，类似 http.HandlerFunc。
+type LogPrinterFunc func(format string, v ...interface{})
+
+func (f LogPrinterFunc) Printf(format string, v ...interface{}) {
+	f(format, v...)
+}
+
+type discardLogger struct{}
+
+func (discardLogger) Printf(string, ...interface{}) {}
+
 // A Server 通过 REST API 暴露 WireGuard 设备管理能力，
 // 覆盖 wg(8) 全部子命令对应的操作。
 type Server struct {
@@ -34,7 +49,7 @@ type Server struct {
 	version   string
 	buildTime string
 	platform  string
-	logf      *log.Logger
+	logf      LogPrinter
 
 	// mu 串行化所有写操作，避免并发配置设备与元数据。
 	mu sync.Mutex
@@ -62,7 +77,7 @@ func BuildInfo(buildTime, platform string) Option {
 }
 
 // Logger 设置服务日志输出；nil 表示丢弃日志。
-func Logger(l *log.Logger) Option {
+func Logger(l LogPrinter) Option {
 	return func(s *Server) { s.logf = l }
 }
 
@@ -75,7 +90,7 @@ func New(c Client, metadataPath string, opts ...Option) *Server {
 		client:   c,
 		metadata: metadataPath,
 		version:  "wgctrl-go",
-		logf:     log.New(io.Discard, "", 0),
+		logf:     discardLogger{},
 	}
 	for _, opt := range opts {
 		opt(s)

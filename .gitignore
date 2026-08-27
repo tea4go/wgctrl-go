@@ -7,3 +7,4 @@ go.mod
 .gotmp
 wg.exe
 wgd.exe
+VERSION.txt

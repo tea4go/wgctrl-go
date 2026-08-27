@@ -62,7 +62,7 @@ if (-not (Test-Path $env:GOTMPDIR)) { New-Item -ItemType Directory -Path $env:GO
 #      e.g. v3.0.9 -> v3.1.0 ; v3.9.9 -> v4.0.0
 # ============================================================
 if ([string]::IsNullOrWhiteSpace($env:IS_BETA))     { $env:IS_BETA     = 'false' }
-if ([string]::IsNullOrWhiteSpace($env:WGD_LISTEN))  { $env:WGD_LISTEN  = '127.0.0.1:8080' }
+if ([string]::IsNullOrWhiteSpace($env:WGD_LISTEN))  { $env:WGD_LISTEN  = '0.0.0.0:6791' }
 if ([string]::IsNullOrWhiteSpace($env:WGD_HIDE_KEYS)) { $env:WGD_HIDE_KEYS = 'false' }
 if ([string]::IsNullOrWhiteSpace($env:WGD_METADATA) -and -not [string]::IsNullOrWhiteSpace($env:RUN_CONFIG)) {
     $env:WGD_METADATA = $env:RUN_CONFIG
@@ -136,12 +136,10 @@ if ($env:IS_BETA -eq 'true') {
 } else {
     $APP_VER_FULL = $APP_TAG
 }
-$WGD_VERSION = "wgctrl-go wgd $APP_VER_FULL"
 
 Write-Host '======================================================='
 Write-Host "项目目录    : $SCRIPT_DIR"
 Write-Host "版本文件    : $VERSION_FILE"
-Write-Host "构建标签    : $APP_TAG"
 if ($env:IS_BETA -eq 'true') {
     Write-Host ("应用版本    : {0}       (测试版=true: v3.0.1_B20060930_0930)" -f $APP_VER_FULL)
 } else {
@@ -151,7 +149,6 @@ Write-Host "构建时间    : $BuildTime"
 Write-Host "测试版      : $($env:IS_BETA)"
 Write-Host "目标平台    : $OS/$Arch"
 Write-Host "Go 目标     : $TargetGOOS/$Arch"
-Write-Host "程序版本    : $WGD_VERSION"
 Write-Host "监听地址    : $($env:WGD_LISTEN)"
 Write-Host "Metadata    : $WGD_METADATA_USE"
 Write-Host "隐藏密钥    : $($env:WGD_HIDE_KEYS)"

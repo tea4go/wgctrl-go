@@ -12,10 +12,10 @@ func DefaultPath() string {
 	}
 	switch runtime.GOOS {
 	case "windows":
-		return filepath.Join(os.Getenv("ProgramData"), "wgctrl-go", "peer-names.json")
+		return filepath.Join(os.Getenv("ProgramData"), "WireGuard", "Data", "Configurations", "peer-names.json")
 	case "darwin":
-		return "/Library/Application Support/wgctrl-go/peer-names.json"
+		return "/Library/Application Support/WireGuard/Configurations/peer-names.json"
 	default:
-		return "/var/lib/wgctrl-go/peer-names.json"
+		return "/etc/wireguard/peer-names.json"
 	}
 }

