@@ -1,6 +1,7 @@
 package wgconfig
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,36 @@ import (
 
 // Encode writes a wg(8) showconf-compatible device configuration.
 func Encode(w io.Writer, d *wgtypes.Device) error {
+	return encode(w, d)
+}
+
+// EncodeColor 写入可选 ANSI 颜色的 wg(8) showconf 兼容配置。
+func EncodeColor(w io.Writer, d *wgtypes.Device, color bool) error {
+	if !color {
+		return encode(w, d)
+	}
+	var b bytes.Buffer
+	if err := encode(&b, d); err != nil {
+		return err
+	}
+	for _, line := range strings.SplitAfter(b.String(), "\n") {
+		trimmed := strings.TrimSuffix(line, "\n")
+		suffix := strings.TrimPrefix(line, trimmed)
+		switch {
+		case strings.HasPrefix(trimmed, "["):
+			trimmed = "\x1b[36;1m" + trimmed + "\x1b[0m"
+		case strings.Contains(trimmed, " = "):
+			parts := strings.SplitN(trimmed, " = ", 2)
+			trimmed = "\x1b[1m" + parts[0] + "\x1b[0m = \x1b[32m" + parts[1] + "\x1b[0m"
+		}
+		if _, err := io.WriteString(w, trimmed+suffix); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func encode(w io.Writer, d *wgtypes.Device) error {
 	if _, err := fmt.Fprintln(w, "[Interface]"); err != nil {
 		return err
 	}

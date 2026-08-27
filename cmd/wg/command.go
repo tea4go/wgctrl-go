@@ -8,13 +8,17 @@ import (
 const usage = "可用子命令:\n" +
 	"  show: 显示当前配置和设备信息\n" +
 	"  showconf: 显示指定 WireGuard 接口的当前配置，供 `setconf' 使用\n" +
-	"  set: 修改当前配置、添加对等节点、移除对等节点或修改对等节点（尚未实现）\n" +
 	"  setconf: 将配置文件应用到 WireGuard 接口\n" +
 	"  addconf: 向 WireGuard 接口追加配置文件\n" +
 	"  syncconf: 将配置文件同步到 WireGuard 接口\n" +
-	"  genkey: 生成新的私钥并写入标准输出（尚未实现）\n" +
-	"  genpsk: 生成新的预共享密钥并写入标准输出（尚未实现）\n" +
-	"  pubkey: 从标准输入读取私钥并将公钥写入标准输出（尚未实现）\n"
+	"  syncgitee: 将接口节点配置合并同步到 Gitee 代码片段\n" +
+	"常用例子:\n" +
+	"  wg show                     # 显示当前配置和设备信息\n" +
+	"  wg showconf wg0             # 显示 wg0 接口的当前配置，供 `setconf' 使用\n" +
+	"  wg setconf  wg0 wg0.conf    # 将 wg0.conf 配置文件应用到 wg0 接口\n" +
+	"  wg addconf  wg0 wg0.conf    # 向 wg0 接口追加 wg0.conf 配置文件\n" +
+	"  wg syncconf wg0 wg0.conf    # 将 wg0.conf 配置文件同步到 wg0 接口\n" +
+	"  wg syncgitee wg0 token gistId [文件名] # 将 wg0 节点配置同步到 Gitee\n"
 
 type commandFunc func(args []string, in io.Reader, out, errOut io.Writer) int
 
@@ -24,14 +28,15 @@ var commands = map[string]commandFunc{
 	"show": func(args []string, in io.Reader, out, errOut io.Writer) int {
 		return showCommand(args, in, out, errOut)
 	},
-	"showconf": showconf,
-	"set":      unimplementedCommand("set"),
-	"setconf":  setconf,
-	"addconf":  addconf,
-	"syncconf": syncconf,
-	"genkey":   unimplementedCommand("genkey"),
-	"genpsk":   unimplementedCommand("genpsk"),
-	"pubkey":   unimplementedCommand("pubkey"),
+	"showconf":  showconf,
+	"set":       unimplementedCommand("set"),
+	"setconf":   setconf,
+	"addconf":   addconf,
+	"syncconf":  syncconf,
+	"syncgitee": syncgitee,
+	"genkey":    unimplementedCommand("genkey"),
+	"genpsk":    unimplementedCommand("genpsk"),
+	"pubkey":    unimplementedCommand("pubkey"),
 }
 
 func execute(args []string, in io.Reader, out, errOut io.Writer) int {

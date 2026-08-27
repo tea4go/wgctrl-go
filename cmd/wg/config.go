@@ -6,13 +6,16 @@ import (
 	"os"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
+	"golang.zx2c4.com/wireguard/wgctrl/internal/wgcli"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgconf"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgconfig"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgmeta"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type configClient interface {
 	wgconf.Client
+	Devices() ([]*wgtypes.Device, error)
 	Close() error
 }
 
@@ -23,6 +26,30 @@ func showconf(args []string, _ io.Reader, out, errOut io.Writer) int {
 	if len(args) == 1 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
 		fmt.Fprintln(errOut, "用法: wg showconf <接口>")
 		return 0
+	}
+	if len(args) == 0 {
+		fmt.Fprintln(errOut, "用法: wg showconf <接口>")
+		client, err := newConfigClient()
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return 1
+		}
+		defer client.Close()
+		devices, err := client.Devices()
+		if err != nil {
+			fmt.Fprintf(errOut, "无法列出接口: %v\n", err)
+			return 1
+		}
+		if len(devices) == 0 {
+			fmt.Fprintln(errOut, "可用接口: 无")
+			return 1
+		}
+		fmt.Fprint(errOut, "可用接口:")
+		for _, device := range devices {
+			fmt.Fprintf(errOut, " %s", device.Name)
+		}
+		fmt.Fprintln(errOut)
+		return 1
 	}
 	if len(args) != 1 {
 		fmt.Fprintln(errOut, "用法: wg showconf <接口>")
@@ -42,7 +69,7 @@ func showconf(args []string, _ io.Reader, out, errOut io.Writer) int {
 	if err := wgconf.AttachNames(d, configMetadataPath()); err != nil {
 		fmt.Fprintf(errOut, "警告: 无法读取节点名称: %v\n", err)
 	}
-	if err := wgconfig.Encode(out, d); err != nil {
+	if err := wgconfig.EncodeColor(out, d, wgcli.ColorEnabled(out, os.Getenv("WG_COLOR_MODE"))); err != nil {
 		fmt.Fprintln(errOut, err)
 		return 1
 	}
