@@ -2,6 +2,7 @@ package main
 
 import (
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -16,8 +17,8 @@ func TestRuntimeBuildInfo(t *testing.T) {
 	BuildTime = ""
 
 	gotVersion, gotBuildTime, gotPlatform := runtimeBuildInfo()
-	if gotVersion != "wgctrl-go wgd v4.1.0" {
-		t.Fatalf("version=%q", gotVersion)
+	if !strings.HasPrefix(gotVersion, "wgctrl-rest ") || !strings.HasSuffix(gotVersion, " v4.1.0") {
+		t.Fatalf("version=%q (want: prefix \"wgctrl-rest \", suffix \" v4.1.0\")", gotVersion)
 	}
 	if gotBuildTime != "unknown" {
 		t.Fatalf("buildTime=%q", gotBuildTime)

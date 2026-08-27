@@ -21,4 +21,6 @@ scp -P 6443 wg root@8.210.19.98:/opt/wireguard/
 scp -P 22   wgd root@101.133.133.127:~/
 scp -P 6443 wgd root@8.210.19.98:/opt/wireguard/
 
+ssh root@101.133.133.127 "~/wgd -l=7"
+
 exit /b %ERRORLEVEL%

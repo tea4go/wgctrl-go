@@ -35,7 +35,7 @@ func (c *fakeClient) ConfigureDevice(_ string, cfg wgtypes.Config) error {
 
 func newTestServer(t *testing.T, c Client) (*httptest.Server, string) {
 	t.Helper()
-	srv := New(c, t.TempDir())
+	srv := NewRestServer(c, t.TempDir())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts, srv.metadata
@@ -109,7 +109,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestVersionIncludesBuildInfo(t *testing.T) {
-	srv := New(
+	srv := NewRestServer(
 		&fakeClient{},
 		t.TempDir(),
 		Version("wgctrl-go wgd v4.1.0"),
@@ -190,7 +190,7 @@ func TestGetDeviceNotFound(t *testing.T) {
 
 func TestHideKeys(t *testing.T) {
 	c := &fakeClient{device: sampleDevice()}
-	srv := New(c, t.TempDir(), HideKeys())
+	srv := NewRestServer(c, t.TempDir(), HideKeys())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/devices/wg0", nil)

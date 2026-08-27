@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: master
 nodes_managed: true
-exported_at: "2026-08-23T04:05:04Z"
+exported_at: "2026-08-27T04:56:04Z"
 modules:
     "":
         dir_name: wgctrl-go 跨平台 WireGuard 设备控制库

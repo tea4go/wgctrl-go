@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	logs "github.com/tea4go/gh/log4go"
+
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgconf"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgconfig"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -26,22 +28,6 @@ type Client interface {
 	ConfigureDevice(string, wgtypes.Config) error
 }
 
-// LogPrinter 是服务日志输出接口，只需要 Printf 方法。
-type LogPrinter interface {
-	Printf(format string, v ...interface{})
-}
-
-// LogPrinterFunc 是函数型 LogPrinter 适配器，类似 http.HandlerFunc。
-type LogPrinterFunc func(format string, v ...interface{})
-
-func (f LogPrinterFunc) Printf(format string, v ...interface{}) {
-	f(format, v...)
-}
-
-type discardLogger struct{}
-
-func (discardLogger) Printf(string, ...interface{}) {}
-
 // A Server 通过 REST API 暴露 WireGuard 设备管理能力，
 // 覆盖 wg(8) 全部子命令对应的操作。
 type Server struct {
@@ -51,7 +37,6 @@ type Server struct {
 	version   string
 	buildTime string
 	platform  string
-	logf      LogPrinter
 
 	// mu 串行化所有写操作，避免并发配置设备与元数据。
 	mu sync.Mutex
@@ -78,12 +63,7 @@ func BuildInfo(buildTime, platform string) Option {
 	}
 }
 
-// Logger 设置服务日志输出；nil 表示丢弃日志。
-func Logger(l LogPrinter) Option {
-	return func(s *Server) { s.logf = l }
-}
-
-// New 创建一个暴露 WireGuard 设备管理 REST API 的 Server。
+// NewRestServer 创建一个暴露 WireGuard 设备管理 REST API 的 Server。
 //
 // metadataPath 用于定位对等节点友好名称的持久化存储，与原生
 // WireGuard 配置文件按 interface 对齐：
@@ -91,54 +71,20 @@ func Logger(l LogPrinter) Option {
 //   - 传入具体 JSON：旧单文件兼容模式（全局一个 JSON 包含所有 interface）
 //
 // 默认值使用 wgmeta.DefaultPath（原生 WireGuard Configurations 目录）。
-func New(c Client, metadataPath string, opts ...Option) *Server {
+func NewRestServer(c Client, metadataPath string, opts ...Option) *Server {
 	s := &Server{
 		client:   c,
 		metadata: metadataPath,
 		version:  "wgctrl-go",
-		logf:     discardLogger{},
 	}
-	s.logf.Printf("[API] Server.init start metadata=%q opts=%d", metadataPath, len(opts))
-	for i, opt := range opts {
-		before := *s
+	logs.Info("[API] Server Path=%s opts=%d", metadataPath, len(opts))
+	for _, opt := range opts {
 		opt(s)
-		var changed []string
-		if s.hideKeys != before.hideKeys {
-			changed = append(changed, fmt.Sprintf("hideKeys=%v→%v", before.hideKeys, s.hideKeys))
-		}
-		if s.version != before.version {
-			changed = append(changed, fmt.Sprintf("version=%q→%q", before.version, s.version))
-		}
-		if s.buildTime != before.buildTime || s.platform != before.platform {
-			changed = append(changed, fmt.Sprintf("build=%q/%q→%q/%q", before.buildTime, before.platform, s.buildTime, s.platform))
-		}
-		_, wasDiscard := before.logf.(discardLogger)
-		_, isDiscard := s.logf.(discardLogger)
-		switch {
-		case wasDiscard && !isDiscard:
-			changed = append(changed, "logf=discard→custom")
-		case !wasDiscard && isDiscard:
-			changed = append(changed, "logf=custom→discard")
-		case !wasDiscard && !isDiscard && before.logf != s.logf:
-			changed = append(changed, "logf=custom→custom(replaced)")
-		}
-		if len(changed) == 0 {
-			changed = append(changed, "(no Server field change detected)")
-		}
-		s.logf.Printf("[API] Server.init apply opt#%d: %s", i, strings.Join(changed, ", "))
 	}
-	info := []string{
-		fmt.Sprintf("version=%q", s.version),
-		fmt.Sprintf("build=%q/%q", s.buildTime, s.platform),
-		fmt.Sprintf("hideKeys=%v", s.hideKeys),
-		fmt.Sprintf("metadata=%q", s.metadata),
-	}
-	if _, ok := s.logf.(discardLogger); ok {
-		info = append(info, "logger=<discard(no output)>")
-	} else {
-		info = append(info, "logger=custom")
-	}
-	s.logf.Printf("[API] Server.init ready %s", strings.Join(info, " "))
+	logs.Info("[API] Server Version=%s build=%s/%s",
+		s.version, s.buildTime, s.platform)
+	logs.Info("[API] Server HideKeys=%v",
+		s.hideKeys)
 	return s
 }
 
@@ -220,14 +166,14 @@ func (s *Server) withLogging(next http.Handler) http.Handler {
 		if newBody != nil {
 			r.Body = newBody
 		}
-		s.logf.Printf("→ %s %s (from=%s length=%d body=%s)",
+		logs.Info("[API] → %s %s (from=%s length=%d body=%s)",
 			r.Method, fullURL(r), remote, r.ContentLength, bodyStr)
 
 		rec := &responseRecorder{ResponseWriter: w}
 		next.ServeHTTP(rec, r)
 
 		elapsed := time.Since(start)
-		s.logf.Printf("← %s %s (status=%d bytes=%d elapsed=%s body=%s)",
+		logs.Info("[API] ← %s %s (status=%d bytes=%d elapsed=%s body=%s)",
 			r.Method, fullURL(r), rec.status, rec.bytes, elapsed, summarize(rec.body.Bytes()))
 	})
 }
@@ -323,6 +269,9 @@ func (s *Server) handleInterfaces(w http.ResponseWriter, _ *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, fmt.Errorf("列出接口失败: %w", err))
 		return
 	}
+	if len(devices) == 0 {
+		logs.Warning("[API] /api/v1/interfaces: 本机当前没有任何 WireGuard 接口可用。请先安装/激活 WireGuard（Windows: 官方WireGuardNT驱动+启用隧道 或 用户态命名管道；Linux: ip link add+wg-quick up；macOS: brew install wireguard-tools）")
+	}
 	names := make([]string, 0, len(devices))
 	for _, d := range devices {
 		names = append(names, d.Name)
@@ -336,10 +285,13 @@ func (s *Server) handleDevices(w http.ResponseWriter, _ *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, fmt.Errorf("列出接口失败: %w", err))
 		return
 	}
+	if len(devices) == 0 {
+		logs.Warning("[API] /api/v1/devices: 本机当前没有任何 WireGuard 接口，返回空数组（请先安装/激活 WireGuard）")
+	}
 	out := make([]Device, 0, len(devices))
 	for _, d := range devices {
 		if err := wgconf.AttachNames(d, s.metadata); err != nil {
-			s.logf.Printf("警告: 无法读取节点名称: %v", err)
+			logs.Warning("[API] 警告: 无法读取节点名称: %v", err)
 		}
 		out = append(out, deviceToJSON(d, s.hideKeys))
 	}
@@ -378,7 +330,7 @@ func (s *Server) handleDeviceResource(w http.ResponseWriter, r *http.Request, na
 			return
 		}
 		if err := wgconf.AttachNames(d, s.metadata); err != nil {
-			s.logf.Printf("警告: 无法读取节点名称: %v", err)
+			logs.Warning("[API] 警告: 无法读取节点名称: %v", err)
 		}
 		writeJSON(w, http.StatusOK, deviceToJSON(d, s.hideKeys))
 	case http.MethodPost:
@@ -413,11 +365,11 @@ func (s *Server) handleDeviceConf(w http.ResponseWriter, r *http.Request, name s
 			return
 		}
 		if err := wgconf.AttachNames(d, s.metadata); err != nil {
-			s.logf.Printf("警告: 无法读取节点名称: %v", err)
+			logs.Warning("[API] 警告: 无法读取节点名称: %v", err)
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		if err := wgconfig.Encode(w, d); err != nil {
-			s.logf.Printf("编码配置失败: %v", err)
+			logs.Error("[API] 编码配置失败: %v", err)
 		}
 	case http.MethodPut, http.MethodPost:
 		mode := r.URL.Query().Get("mode")
@@ -526,7 +478,7 @@ func methodNotAllowed(w http.ResponseWriter, allow string) {
 }
 
 func (s *Server) writeError(w http.ResponseWriter, status int, err error) {
-	s.logf.Printf("错误: %v", err)
+	logs.Error("[API] 错误: %v", err)
 	writeJSON(w, status, map[string]string{"error": err.Error()})
 }
 

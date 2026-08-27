@@ -41,7 +41,7 @@ func runtimeBuildInfo() (string, string, string) {
 	if buildTime == "" {
 		buildTime = "unknown"
 	}
-	return "wgctrl-go wgd " + version, buildTime, runtime.GOOS + "-" + runtime.GOARCH
+	return "wgctrl-rest " + version, buildTime, runtime.GOOS + "-" + runtime.GOARCH
 }
 
 func main() {
@@ -74,19 +74,29 @@ func main() {
 	}
 	defer client.Close()
 
+	if ds, derr := client.Devices(); derr != nil {
+		logs.Warning("[WGD] 启动时枚举 WireGuard 接口失败: %v（请确认已安装并启动 WireGuard 内核驱动或用户态隧道管理器）", derr)
+	} else if len(ds) == 0 {
+		if runtime.GOOS == "windows" {
+			logs.Warning("[WGD] 未检测到任何 WireGuard 接口。Windows 平台必须满足以下任一条件:\n  • 安装了官方 WireGuardNT 驱动，并已激活一条隧道（接口名如 WGTun/utun）\n  • 或正在运行基于命名管道 \\\\.\\pipe\\ProtectedPrefix\\Administrators\\WireGuard\\* 的用户态 WireGuard\n  当前 curl /api/v1/interfaces 返回 [] 属于正常，请先创建/激活接口。")
+		} else {
+			logs.Warning("[WGD] 未检测到任何 WireGuard 接口（/api/v1/interfaces 将返回 []）。请使用 wg-quick up / ip link add 等命令先创建 WireGuard 接口。")
+		}
+	} else {
+		names := make([]string, 0, len(ds))
+		for _, d := range ds { names = append(names, d.Name) }
+		logs.Info("[WGD] 已检测到 %d 个 WireGuard 接口: [%s]", len(ds), strings.Join(names, ", "))
+	}
+
 	appVersion, buildTime, platform := runtimeBuildInfo()
 	opts := []wgapi.Option{
 		wgapi.Version(appVersion),
 		wgapi.BuildInfo(buildTime, platform),
-		wgapi.Logger(wgapi.LogPrinterFunc(
-			func(format string, v ...interface{}) {
-				logs.Info("[API] %s", fmt.Sprintf(format, v...))
-			})),
 	}
 	if *hideKeys {
 		opts = append(opts, wgapi.HideKeys())
 	}
-	api := wgapi.New(client, *metadata, opts...)
+	api := wgapi.NewRestServer(client, *metadata, opts...)
 
 	server := &http.Server{
 		Addr:              *listen,
