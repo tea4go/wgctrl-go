@@ -388,6 +388,14 @@ func TestMethodNotAllowed(t *testing.T) {
 	}
 }
 
+func newTestServerWithOpts(t *testing.T, c Client, opts ...Option) (*httptest.Server, string) {
+	t.Helper()
+	srv := NewRestServer(c, t.TempDir(), opts...)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	return ts, srv.metadata
+}
+
 func TestListDevicesError(t *testing.T) {
 	c := &fakeClient{err: errors.New("boom")}
 	ts, _ := newTestServer(t, c)
@@ -396,5 +404,84 @@ func TestListDevicesError(t *testing.T) {
 	ts.Config.Handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("code=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthMiddlewareNoKey(t *testing.T) {
+	ts, _ := newTestServerWithOpts(t, &fakeClient{devices: []*wgtypes.Device{sampleDevice()}}, APIKey("s3cr3t"))
+	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/interfaces", nil)
+	rec := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("code=%d want=%d body=%q", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+	if www := rec.Header().Get("WWW-Authenticate"); www != "X-API-Key" {
+		t.Fatalf("WWW-Authenticate=%q", www)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json decode: %v", err)
+	}
+	if !strings.Contains(body["error"], "missing") && !strings.Contains(body["error"], "X-API-Key") {
+		t.Fatalf("error=%q", body["error"])
+	}
+}
+
+func TestAuthMiddlewareWrongKey(t *testing.T) {
+	ts, _ := newTestServerWithOpts(t, &fakeClient{devices: []*wgtypes.Device{sampleDevice()}}, APIKey("s3cr3t"))
+	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/interfaces", nil)
+	req.Header.Set("X-API-Key", "wr0ng")
+	rec := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("code=%d want=%d body=%q", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
+func TestAuthMiddlewareCorrectKey(t *testing.T) {
+	ts, _ := newTestServerWithOpts(t, &fakeClient{devices: []*wgtypes.Device{sampleDevice()}}, APIKey("s3cr3t"))
+	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/interfaces", nil)
+	req.Header.Set("X-API-Key", "s3cr3t")
+	rec := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%q", rec.Code, rec.Body.String())
+	}
+	var names []string
+	if err := json.Unmarshal(rec.Body.Bytes(), &names); err != nil {
+		t.Fatalf("json: %v", err)
+	}
+	if len(names) != 1 || names[0] != "wg0" {
+		t.Fatalf("names=%v", names)
+	}
+}
+
+func TestAuthWhitelistHealthAndAutotest(t *testing.T) {
+	ts, _ := newTestServerWithOpts(t, &fakeClient{}, APIKey("s3cr3t"))
+	for _, path := range []string{"/autotest", "/api/v1/health"} {
+		req := httptest.NewRequest(http.MethodGet, ts.URL+path, nil)
+		rec := httptest.NewRecorder()
+		ts.Config.Handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s code=%d want=200 (whitelist) body=%q", path, rec.Code, rec.Body.String())
+		}
+	}
+	// 白名单不含 /api/v1/version，应返回 401
+	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/version", nil)
+	rec := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("version code=%d want=401 body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAuthDisabledWhenKeyEmpty(t *testing.T) {
+	ts, _ := newTestServerWithOpts(t, &fakeClient{devices: []*wgtypes.Device{sampleDevice()}}) // 不传 APIKey
+	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/interfaces", nil)
+	// 不带任何 header
+	rec := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%q (key 为空应禁用鉴权)", rec.Code, rec.Body.String())
 	}
 }

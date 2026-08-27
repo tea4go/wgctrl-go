@@ -49,11 +49,20 @@ func main() {
 		listen   = flag.StringP("listen", "a", "0.0.0.0:6791", "REST API 监听地址")
 		metadata = flag.StringP("metadata", "m", wgmeta.DefaultPath(), "节点名称元数据目录或具体 JSON 文件：目录将按 interface 生成 {name}.names.json，与 {name}.conf(.dpapi) 并列")
 		hideKeys = flag.BoolP("hide-keys", "k", false, "查询响应中隐藏私钥与预共享密钥")
+		apiKey   = flag.StringP("api-key", "x", "", "REST API 静态鉴权密钥（请求头 X-API-Key）；也可通过环境变量 WGD_API_KEY 设置。不设置则不启用鉴权⚠️")
 	)
 
 	network.SetAppVersion(appName, version, IsBeta, BuildTime)
 
 	flag.Parse()
+
+	// 命令行参数优先，其次读环境变量。
+	if *apiKey == "" {
+		*apiKey = os.Getenv("WGD_API_KEY")
+	}
+	if *apiKey == "" {
+		logs.Warning("[WGD] ⚠️  未设置 REST API 鉴权密钥 (--api-key / -x 或环境变量 WGD_API_KEY)。任何人都可访问 WireGuard 配置与改接口，强烈建议在非本机部署时启用。")
+	}
 
 	log_name := os.Getenv("log_name")
 	if log_name == "" {
@@ -96,6 +105,9 @@ func main() {
 	if *hideKeys {
 		opts = append(opts, wgapi.HideKeys())
 	}
+	if *apiKey != "" {
+		opts = append(opts, wgapi.APIKey(*apiKey))
+	}
 	api := wgapi.NewRestServer(client, *metadata, opts...)
 
 	server := &http.Server{
@@ -109,7 +121,9 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logs.Info("监听 %s", *listen)
+		authStatus := "disabled"
+		if *apiKey != "" { authStatus = "enabled (X-API-Key)" }
+		logs.Info("监听 %s auth=%s", *listen, authStatus)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}

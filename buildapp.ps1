@@ -50,14 +50,24 @@ if (-not (Test-Path $env:GOTMPDIR)) { New-Item -ItemType Directory -Path $env:GO
 
 # ============================================================
 #  Overridable env vars (set before calling this script):
-#    APP_TAG     - force build version (e.g. v3.0.9), skips VERSION.txt auto-increment
-#    IS_BETA     - "true" or empty (default: empty, align with Makefile)
+#    APP_TAG        - force build version (e.g. v3.0.9), skips VERSION.txt auto-increment
+#    IS_BETA        - "true" or empty (default: empty, align with Makefile)
+#    WGD_API_KEY    - optional: pre-set default static REST auth key (X-API-Key request header).
+#                     Not baked into the binary: wgd reads WGD_API_KEY env var at runtime
+#                     (fallback: command line --api-key / -x).  Empty = auth disabled by default.
 #  Persistent version file:
 #    VERSION.txt at project root (SCRIPT_DIR) holds last MAJOR.MINOR.PATCH;
 #    each build auto-increments PATCH, carrying over when any digit > 9
 #      e.g. v3.0.9 -> v3.1.0 ; v3.9.9 -> v4.0.0
 # ============================================================
 if ([string]::IsNullOrWhiteSpace($env:IS_BETA))     { $env:IS_BETA     = 'false' }
+
+if ([string]::IsNullOrWhiteSpace($env:WGD_API_KEY)) {
+    Write-Host '[提示] 环境变量 WGD_API_KEY 为空；编译出的 wgd 默认不启用 REST 鉴权。' -ForegroundColor Yellow
+    Write-Host '       生产运行时请设置 $env:WGD_API_KEY = "<强随机密钥>" 或启动时加上 --api-key <key>' -ForegroundColor Yellow
+} else {
+    Write-Host ('[信息] 检测到 WGD_API_KEY 环境变量（长度 {0}）；wgd 运行时将优先用它，也可用 --api-key 覆盖。' -f $env:WGD_API_KEY.Length) -ForegroundColor Cyan
+}
 
 $VERSION_FILE = Join-Path $SCRIPT_DIR 'VERSION.txt'
 

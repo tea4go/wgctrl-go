@@ -37,6 +37,7 @@ type Server struct {
 	version   string
 	buildTime string
 	platform  string
+	apiKey    string
 
 	// mu 串行化所有写操作，避免并发配置设备与元数据。
 	mu sync.Mutex
@@ -61,6 +62,12 @@ func BuildInfo(buildTime, platform string) Option {
 		s.buildTime = buildTime
 		s.platform = platform
 	}
+}
+
+// APIKey 设置访问 REST API 所需的静态密钥；空字符串表示不启用鉴权。
+// 请求必须携带请求头 X-API-Key 并匹配该值，否则返回 401。
+func APIKey(key string) Option {
+	return func(s *Server) { s.apiKey = key }
 }
 
 // NewRestServer 创建一个暴露 WireGuard 设备管理 REST API 的 Server。
@@ -116,7 +123,48 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/genkey", s.handleGenKey)
 	mux.HandleFunc("/api/v1/genpsk", s.handleGenPsk)
 	mux.HandleFunc("/api/v1/pubkey", s.handlePubkey)
-	return s.withLogging(mux)
+	return s.withLogging(s.withAuth(mux))
+}
+
+// withAuth 是 X-API-Key 静态鉴权中间件。白名单路径：/autotest、/api/v1/health。
+func (s *Server) withAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.apiKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		path := r.URL.Path
+		if path == "/autotest" || path == "/api/v1/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		got := r.Header.Get("X-API-Key")
+		if got == "" {
+			logs.Warning("[API] 拒绝未鉴权请求 %s %s (X-API-Key 缺失)", r.Method, path)
+			w.Header().Set("WWW-Authenticate", "X-API-Key")
+			s.writeError(w, http.StatusUnauthorized, errors.New("unauthorized: missing X-API-Key header"))
+			return
+		}
+		if !constantTimeEq(s.apiKey, got) {
+			logs.Warning("[API] 拒绝鉴权失败请求 %s %s (X-API-Key 不匹配)", r.Method, path)
+			w.Header().Set("WWW-Authenticate", "X-API-Key")
+			s.writeError(w, http.StatusUnauthorized, errors.New("unauthorized: invalid X-API-Key"))
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// constantTimeEq 使用固定时间比较两个字符串，避免时序侧信道泄露。
+func constantTimeEq(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var diff byte
+	for i := 0; i < len(a); i++ {
+		diff |= a[i] ^ b[i]
+	}
+	return diff == 0
 }
 
 // responseRecorder 包装 http.ResponseWriter 以捕获状态码、响应字节数与响应体摘要。
