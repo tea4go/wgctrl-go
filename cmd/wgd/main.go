@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -20,6 +22,16 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgapi"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgmeta"
 )
+
+// generateAPIKey 使用 crypto/rand 生成 32 字节随机密钥，base64 编码（URL 安全，无填充）。
+// 正常机器上失败属于极小概率事件，一旦失败直接 panic，避免以无鉴权模式启动。
+func generateAPIKey() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic(fmt.Sprintf("生成随机 API 密钥失败 (crypto/rand): %v", err))
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
 
 var (
 	appName   = "wgd"
@@ -48,20 +60,34 @@ func main() {
 	var (
 		listen   = flag.StringP("listen", "a", "0.0.0.0:6791", "REST API 监听地址")
 		metadata = flag.StringP("metadata", "m", wgmeta.DefaultPath(), "节点名称元数据目录或具体 JSON 文件：目录将按 interface 生成 {name}.names.json，与 {name}.conf(.dpapi) 并列")
-		hideKeys = flag.BoolP("hide-keys", "k", false, "查询响应中隐藏私钥与预共享密钥")
-		apiKey   = flag.StringP("api-key", "x", "", "REST API 静态鉴权密钥（请求头 X-API-Key）；也可通过环境变量 WGD_API_KEY 设置。不设置则不启用鉴权⚠️")
+		hideKeys = flag.BoolP("hide-keys", "k", true, "查询响应中隐藏私钥与预共享密钥")
+		apiKey   = flag.StringP("api-key", "x", "", "REST API 静态鉴权密钥（请求头 X-API-Key）；也可通过环境变量 WGD_API_KEY 设置。两者都不填则自动生成 256 位随机密钥并打印（推荐）。")
 	)
 
 	network.SetAppVersion(appName, version, IsBeta, BuildTime)
 
 	flag.Parse()
 
-	// 命令行参数优先，其次读环境变量。
+	// 优先级：命令行 --api-key/-x  >  环境变量 WGD_API_KEY  >  自动生成随机 key（默认）
+	apiKeyFrom := "cli"
 	if *apiKey == "" {
-		*apiKey = os.Getenv("WGD_API_KEY")
+		if env := os.Getenv("WGD_API_KEY"); env != "" {
+			*apiKey = env
+			apiKeyFrom = "env"
+		} else {
+			*apiKey = generateAPIKey()
+			apiKeyFrom = "auto"
+		}
 	}
-	if *apiKey == "" {
-		logs.Warning("[WGD] ⚠️  未设置 REST API 鉴权密钥 (--api-key / -x 或环境变量 WGD_API_KEY)。任何人都可访问 WireGuard 配置与改接口，强烈建议在非本机部署时启用。")
+	if len(*apiKey) < 16 {
+		logs.Critical("[WGD] REST API 鉴权密钥过短（长度=%d），至少 16 字符。请用 --api-key/-x 或 WGD_API_KEY 设置一个长随机密钥，或留空让程序自动生成。", len(*apiKey))
+		os.Exit(2)
+	}
+	if apiKeyFrom == "auto" {
+		// 自动生成的密钥必须让用户可见：同时打到日志和 stderr（日志可能被重定向到文件）。
+		banner := fmt.Sprintf("[WGD] 未指定 --api-key/-x 且 WGD_API_KEY 为空，已自动生成一个 256 位的 REST API 鉴权密钥：\n  X-API-Key: %s\n  请在所有请求头部携带该值；也可用 --api-key / 环境变量 WGD_API_KEY 指定你自己的密钥后重启。", *apiKey)
+		logs.Warning(banner)
+		fmt.Fprintln(os.Stderr, banner)
 	}
 
 	log_name := os.Getenv("log_name")
@@ -93,7 +119,9 @@ func main() {
 		}
 	} else {
 		names := make([]string, 0, len(ds))
-		for _, d := range ds { names = append(names, d.Name) }
+		for _, d := range ds {
+			names = append(names, d.Name)
+		}
 		logs.Info("[WGD] 已检测到 %d 个 WireGuard 接口: [%s]", len(ds), strings.Join(names, ", "))
 	}
 
@@ -101,12 +129,10 @@ func main() {
 	opts := []wgapi.Option{
 		wgapi.Version(appVersion),
 		wgapi.BuildInfo(buildTime, platform),
+		wgapi.APIKey(*apiKey), // 强制启用鉴权，不再存在"未启用鉴权"的启动路径
 	}
 	if *hideKeys {
 		opts = append(opts, wgapi.HideKeys())
-	}
-	if *apiKey != "" {
-		opts = append(opts, wgapi.APIKey(*apiKey))
 	}
 	api := wgapi.NewRestServer(client, *metadata, opts...)
 
@@ -121,9 +147,8 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		authStatus := "disabled"
-		if *apiKey != "" { authStatus = "enabled (X-API-Key)" }
-		logs.Info("监听 %s auth=%s", *listen, authStatus)
+		// 这里只打印 key 来源和长度，不打印明文（auto 情况已在上面的 banner 输出过）
+		logs.Info("监听 %s auth=enabled (X-API-Key, source=%s, length=%d)", *listen, apiKeyFrom, len(*apiKey))
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
