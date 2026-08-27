@@ -15,24 +15,7 @@ const usage = "可用子命令:\n" +
 	"  syncconf: 将配置文件同步到 WireGuard 接口\n" +
 	"  genkey: 生成新的私钥并写入标准输出\n" +
 	"  genpsk: 生成新的预共享密钥并写入标准输出\n" +
-	"  pubkey: 从标准输入读取私钥并将公钥写入标准输出\n" +
-	"你可以向任意子命令传递 `--help' 参数查看用法。\n"
-
-func versionText() string {
-	buildTime := BuildTime
-	if buildTime == "" {
-		buildTime = "unknown"
-	}
-	return fmt.Sprintf(
-		"wireguard-tools %s - https://git.zx2c4.com/wireguard-tools/\n"+
-			"Build Time : %s\n"+
-			"Platform   : %s-%s\n",
-		appVer,
-		buildTime,
-		runtime.GOOS,
-		runtime.GOARCH,
-	)
-}
+	"  pubkey: 从标准输入读取私钥并将公钥写入标准输出\n"
 
 type commandFunc func(args []string, in io.Reader, out, errOut io.Writer) int
 

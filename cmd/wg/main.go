@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	appName   = "autoreboot"
+	appName   = "wg"
 	appVer    = "v0.0.2"
 	IsBeta    string
 	BuildTime string
