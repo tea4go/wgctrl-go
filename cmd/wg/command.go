@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"runtime"
 )
 
 const usage = "可用子命令:\n" +
@@ -39,18 +38,6 @@ func execute(args []string, in io.Reader, out, errOut io.Writer) int {
 	if len(args) == 0 {
 		return showCommand(nil, in, out, errOut)
 	}
-
-	if len(args) == 1 {
-		switch args[0] {
-		case "version":
-			_, _ = io.WriteString(out, versionText())
-			return 0
-		case "help":
-			_, _ = io.WriteString(out, usage)
-			return 0
-		}
-	}
-
 	command, ok := commands[args[0]]
 	if !ok {
 		fmt.Fprintf(errOut, "无效的子命令: `%s'\n", args[0])
