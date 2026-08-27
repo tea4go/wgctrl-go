@@ -1,6 +1,7 @@
 package wgapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgconf"
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgconfig"
@@ -83,8 +85,12 @@ func Logger(l LogPrinter) Option {
 
 // New 创建一个暴露 WireGuard 设备管理 REST API 的 Server。
 //
-// metadataPath 用于持久化对等节点名称元数据，与 wg 命令行工具
-// 共享同一存储（默认使用 wgmeta.DefaultPath）。
+// metadataPath 用于定位对等节点友好名称的持久化存储，与原生
+// WireGuard 配置文件按 interface 对齐：
+//   - 传入目录：读写 {metadataPath}/{iface}.names.json（与 {iface}.conf / {iface}.conf.dpapi 并列）
+//   - 传入具体 JSON：旧单文件兼容模式（全局一个 JSON 包含所有 interface）
+//
+// 默认值使用 wgmeta.DefaultPath（原生 WireGuard Configurations 目录）。
 func New(c Client, metadataPath string, opts ...Option) *Server {
 	s := &Server{
 		client:   c,
@@ -92,9 +98,47 @@ func New(c Client, metadataPath string, opts ...Option) *Server {
 		version:  "wgctrl-go",
 		logf:     discardLogger{},
 	}
-	for _, opt := range opts {
+	s.logf.Printf("[API] Server.init start metadata=%q opts=%d", metadataPath, len(opts))
+	for i, opt := range opts {
+		before := *s
 		opt(s)
+		var changed []string
+		if s.hideKeys != before.hideKeys {
+			changed = append(changed, fmt.Sprintf("hideKeys=%v→%v", before.hideKeys, s.hideKeys))
+		}
+		if s.version != before.version {
+			changed = append(changed, fmt.Sprintf("version=%q→%q", before.version, s.version))
+		}
+		if s.buildTime != before.buildTime || s.platform != before.platform {
+			changed = append(changed, fmt.Sprintf("build=%q/%q→%q/%q", before.buildTime, before.platform, s.buildTime, s.platform))
+		}
+		_, wasDiscard := before.logf.(discardLogger)
+		_, isDiscard := s.logf.(discardLogger)
+		switch {
+		case wasDiscard && !isDiscard:
+			changed = append(changed, "logf=discard→custom")
+		case !wasDiscard && isDiscard:
+			changed = append(changed, "logf=custom→discard")
+		case !wasDiscard && !isDiscard && before.logf != s.logf:
+			changed = append(changed, "logf=custom→custom(replaced)")
+		}
+		if len(changed) == 0 {
+			changed = append(changed, "(no Server field change detected)")
+		}
+		s.logf.Printf("[API] Server.init apply opt#%d: %s", i, strings.Join(changed, ", "))
 	}
+	info := []string{
+		fmt.Sprintf("version=%q", s.version),
+		fmt.Sprintf("build=%q/%q", s.buildTime, s.platform),
+		fmt.Sprintf("hideKeys=%v", s.hideKeys),
+		fmt.Sprintf("metadata=%q", s.metadata),
+	}
+	if _, ok := s.logf.(discardLogger); ok {
+		info = append(info, "logger=<discard(no output)>")
+	} else {
+		info = append(info, "logger=custom")
+	}
+	s.logf.Printf("[API] Server.init ready %s", strings.Join(info, " "))
 	return s
 }
 
@@ -126,7 +170,129 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/genkey", s.handleGenKey)
 	mux.HandleFunc("/api/v1/genpsk", s.handleGenPsk)
 	mux.HandleFunc("/api/v1/pubkey", s.handlePubkey)
-	return mux
+	return s.withLogging(mux)
+}
+
+// responseRecorder 包装 http.ResponseWriter 以捕获状态码、响应字节数与响应体摘要。
+type responseRecorder struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+	bytes       int
+	body        bytes.Buffer
+}
+
+func (r *responseRecorder) WriteHeader(code int) {
+	if !r.wroteHeader {
+		r.status = code
+		r.wroteHeader = true
+		r.ResponseWriter.WriteHeader(code)
+	}
+}
+
+func (r *responseRecorder) Write(b []byte) (int, error) {
+	if !r.wroteHeader {
+		r.status = http.StatusOK
+		r.wroteHeader = true
+	}
+	n, err := r.ResponseWriter.Write(b)
+	r.bytes += n
+	if r.body.Len() < 1024 {
+		remaining := 1024 - r.body.Len()
+		if n < remaining {
+			r.body.Write(b)
+		} else {
+			r.body.Write(b[:remaining])
+		}
+	}
+	return n, err
+}
+
+// withLogging 是 REST API 统一日志中间件，自动在每个请求处理前后打印入/出日志。
+func (s *Server) withLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		remote := r.RemoteAddr
+		if remote == "" {
+			remote = "-"
+		}
+		bodyStr, newBody := peekRequestBody(r)
+		if newBody != nil {
+			r.Body = newBody
+		}
+		s.logf.Printf("→ %s %s (from=%s length=%d body=%s)",
+			r.Method, fullURL(r), remote, r.ContentLength, bodyStr)
+
+		rec := &responseRecorder{ResponseWriter: w}
+		next.ServeHTTP(rec, r)
+
+		elapsed := time.Since(start)
+		s.logf.Printf("← %s %s (status=%d bytes=%d elapsed=%s body=%s)",
+			r.Method, fullURL(r), rec.status, rec.bytes, elapsed, summarize(rec.body.Bytes()))
+	})
+}
+
+// fullURL 返回包含 RawQuery 的完整请求目标字符串，日志用。
+func fullURL(r *http.Request) string {
+	if r.URL.RawQuery == "" {
+		return r.URL.Path
+	}
+	return r.URL.Path + "?" + r.URL.RawQuery
+}
+
+// peekRequestBody 最多读取 1 KB 请求体作为日志摘要，返回摘要字符串与可重放的新 Request.Body。
+// 若无请求体（nil / 空）则返回 ("-", nil)。
+func peekRequestBody(r *http.Request) (string, io.ReadCloser) {
+	if r.Body == nil || r.ContentLength == 0 {
+		return "-", nil
+	}
+	limit := int64(1024)
+	if r.ContentLength > 0 && r.ContentLength < limit {
+		limit = r.ContentLength
+	}
+	buf := make([]byte, limit)
+	n, err := io.ReadFull(r.Body, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return fmt.Sprintf("<read error: %v>", err), r.Body
+	}
+	read := buf[:n]
+	// 把已读取的部分 + 剩余未读部分拼回新 Body，供原 handler 继续消费。
+	remainder, _ := io.ReadAll(r.Body)
+	_ = r.Body.Close()
+	joined := make([]byte, 0, len(read)+len(remainder))
+	joined = append(joined, read...)
+	joined = append(joined, remainder...)
+	newBody := io.NopCloser(bytes.NewReader(joined))
+	r.ContentLength = int64(len(joined))
+	return summarize(read), newBody
+}
+
+// summarize 将字节切片格式化为日志友好的摘要，最长 320 字符；
+// 纯 ASCII 文本按原样截断，二进制则显示为 hex 摘要。
+func summarize(b []byte) string {
+	if len(b) == 0 {
+		return "-"
+	}
+	isText := true
+	for _, c := range b {
+		if c < 0x08 || (c > 0x0D && c < 0x20) {
+			isText = false
+			break
+		}
+	}
+	s := ""
+	if isText {
+		s = strings.TrimSpace(string(b))
+	} else {
+		s = fmt.Sprintf("<binary %d bytes>", len(b))
+	}
+	max := 320
+	if len(s) > max {
+		s = s[:max-3] + "..."
+	}
+	// 折叠多余空白，防止日志多行化。
+	s = strings.Join(strings.Fields(s), " ")
+	return s
 }
 
 func (s *Server) handleAutotest(w http.ResponseWriter, r *http.Request) {

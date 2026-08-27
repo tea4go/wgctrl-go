@@ -1,14 +1,13 @@
 package wgmeta
 
 import (
-	"path/filepath"
 	"testing"
 
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func TestStorePersistsNames(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "peer-names.json")
+	path := t.TempDir()
 	store := New(path)
 	key := wgtypes.Key{1}
 	if err := store.Update("wg0", func(names map[wgtypes.Key]string) {
@@ -31,7 +30,7 @@ func TestStorePersistsNames(t *testing.T) {
 }
 
 func TestStoreDeletesEmptyInterface(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "peer-names.json")
+	path := t.TempDir()
 	store := New(path)
 	key := wgtypes.Key{1}
 	if err := store.Update("wg0", func(names map[wgtypes.Key]string) { names[key] = "name" }); err != nil {

@@ -52,21 +52,12 @@ if (-not (Test-Path $env:GOTMPDIR)) { New-Item -ItemType Directory -Path $env:GO
 #  Overridable env vars (set before calling this script):
 #    APP_TAG     - force build version (e.g. v3.0.9), skips VERSION.txt auto-increment
 #    IS_BETA     - "true" or empty (default: empty, align with Makefile)
-#    WGD_LISTEN  - REST API listen address (default 127.0.0.1:8080)
-#    WGD_METADATA - peer metadata JSON file path
-#    WGD_HIDE_KEYS - "true" or "false" (default false)
-#    RUN_CONFIG  - backward-compatible alias for WGD_METADATA
 #  Persistent version file:
 #    VERSION.txt at project root (SCRIPT_DIR) holds last MAJOR.MINOR.PATCH;
 #    each build auto-increments PATCH, carrying over when any digit > 9
 #      e.g. v3.0.9 -> v3.1.0 ; v3.9.9 -> v4.0.0
 # ============================================================
 if ([string]::IsNullOrWhiteSpace($env:IS_BETA))     { $env:IS_BETA     = 'false' }
-if ([string]::IsNullOrWhiteSpace($env:WGD_LISTEN))  { $env:WGD_LISTEN  = '0.0.0.0:6791' }
-if ([string]::IsNullOrWhiteSpace($env:WGD_HIDE_KEYS)) { $env:WGD_HIDE_KEYS = 'false' }
-if ([string]::IsNullOrWhiteSpace($env:WGD_METADATA) -and -not [string]::IsNullOrWhiteSpace($env:RUN_CONFIG)) {
-    $env:WGD_METADATA = $env:RUN_CONFIG
-}
 
 $VERSION_FILE = Join-Path $SCRIPT_DIR 'VERSION.txt'
 
@@ -76,17 +67,6 @@ $VERSION_FILE = Join-Path $SCRIPT_DIR 'VERSION.txt'
 if (-not (Get-Command 'go' -ErrorAction SilentlyContinue)) {
     Write-Host '[错误] 未在 PATH 中找到 go 命令，请安装 Go 并添加到系统 PATH。' -ForegroundColor Red
     exit 1
-}
-
-if (-not [string]::IsNullOrWhiteSpace($env:WGD_METADATA)) {
-    $WGD_METADATA_USE = $env:WGD_METADATA
-    if (-not (Test-Path $WGD_METADATA_USE)) {
-        Write-Host "[警告] 未找到 metadata 文件: $WGD_METADATA_USE" -ForegroundColor Yellow
-        Write-Host '       将不使用 -metadata 参数启动（可设置 WGD_METADATA 环境变量指定路径）。' -ForegroundColor Yellow
-        $WGD_METADATA_USE = ''
-    }
-} else {
-    $WGD_METADATA_USE = ''
 }
 
 # ============================================================
@@ -149,9 +129,6 @@ Write-Host "构建时间    : $BuildTime"
 Write-Host "测试版      : $($env:IS_BETA)"
 Write-Host "目标平台    : $OS/$Arch"
 Write-Host "Go 目标     : $TargetGOOS/$Arch"
-Write-Host "监听地址    : $($env:WGD_LISTEN)"
-Write-Host "Metadata    : $WGD_METADATA_USE"
-Write-Host "隐藏密钥    : $($env:WGD_HIDE_KEYS)"
 Write-Host "输出文件    : $WG_EXE"
 Write-Host "输出文件    : $RUN_EXE"
 Write-Host '======================================================='
@@ -206,65 +183,8 @@ if ($OS -eq 'windows' -and (Test-Path $ALIAS_DIR)) {
 }
 
 Write-Host '======================================================='
-
-if ($OS -ne 'windows') {
-    Write-Host "[信息] 非 Windows 目标仅执行编译，不自动运行输出文件。" -ForegroundColor Cyan
-    exit 0
-}
-
-# ============================================================
-#  停止守护进程（确保旧的 wgd 守护进程已关闭）
-# ============================================================
-Write-Host '[信息] 正在停止 wgd 相关守护进程...' -ForegroundColor Cyan
-$daemonStopped = $false
-foreach ($proc in @('wgd')) {
-    $found = Get-Process -Name $proc -ErrorAction SilentlyContinue
-    if ($found) {
-        $found | ForEach-Object {
-            Write-Host "  停止进程: $($_.ProcessName) (PID: $($_.Id))" -ForegroundColor Yellow
-        }
-        $found | Stop-Process -Force -ErrorAction SilentlyContinue
-        $daemonStopped = $true
-    }
-}
-if ($daemonStopped) {
-    Start-Sleep -Seconds 1
-    Write-Host '[信息] 守护进程已停止。' -ForegroundColor Green
-} else {
-    Write-Host '[信息] 未发现正在运行的守护进程。' -ForegroundColor Gray
-}
+Write-Host '[完成] 全部构建成功，不自动运行输出文件。' -ForegroundColor Green
+Write-Host "  - $WG_EXE"
+Write-Host "  - $RUN_EXE"
 Write-Host '======================================================='
-
-# ============================================================
-#  Admin check + elevate if needed
-# ============================================================
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-    [Security.Principal.WindowsBuiltInRole]::Administrator
-)
-
-$exeArgs = @()
-if ($args.Count -gt 0) {
-    $exeArgs = @($args)
-} else {
-    if (-not [string]::IsNullOrWhiteSpace($env:WGD_LISTEN)) {
-        $exeArgs += '-listen'
-        $exeArgs += $env:WGD_LISTEN
-    }
-    if (-not [string]::IsNullOrWhiteSpace($WGD_METADATA_USE)) {
-        $exeArgs += '-metadata'
-        $exeArgs += $WGD_METADATA_USE
-    }
-    if ($env:WGD_HIDE_KEYS -eq 'true') {
-        $exeArgs += '-hide-keys'
-    }
-}
-
-if ($isAdmin) {
-    & $RUN_EXE @exeArgs
-    exit $LASTEXITCODE
-}
-
-# 提权
-Write-Host "正在请求管理员权限以启动 $WGD_OUT_BIN_NAME ..." -ForegroundColor Cyan
-$procInfo = Start-Process -FilePath $RUN_EXE -ArgumentList $exeArgs -Verb RunAs -Wait -PassThru
-exit $procInfo.ExitCode
+exit 0

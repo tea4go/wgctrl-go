@@ -1,7 +1,6 @@
 package wgconf
 
 import (
-	"path/filepath"
 	"testing"
 
 	"golang.zx2c4.com/wireguard/wgctrl/internal/wgmeta"
@@ -24,7 +23,7 @@ func TestApplyStripsAndPersistsName(t *testing.T) {
 	name := "branch-office"
 	key := wgtypes.Key{1}
 	client := &fakeClient{device: &wgtypes.Device{Name: "wg0", Peers: []wgtypes.Peer{{PublicKey: key}}}}
-	path := filepath.Join(t.TempDir(), "peer-names.json")
+	path := t.TempDir()
 	cfg := wgtypes.Config{Peers: []wgtypes.PeerConfig{{Name: &name, PublicKey: key}}}
 	if err := Apply(client, "wg0", cfg, path); err != nil {
 		t.Fatal(err)
@@ -39,7 +38,7 @@ func TestApplyStripsAndPersistsName(t *testing.T) {
 }
 
 func TestApplyClearsAndReplaces(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "peer-names.json")
+	path := t.TempDir()
 	store := wgmeta.New(path)
 	oldKey, keptKey := wgtypes.Key{1}, wgtypes.Key{2}
 	if err := store.Update("wg0", func(names map[wgtypes.Key]string) {
@@ -61,7 +60,7 @@ func TestApplyClearsAndReplaces(t *testing.T) {
 }
 
 func TestSyncRemovesMissingPeers(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "peer-names.json")
+	path := t.TempDir()
 	kept, removed := wgtypes.Key{1}, wgtypes.Key{2}
 	client := &fakeClient{
 		device: &wgtypes.Device{Name: "wg0", Peers: []wgtypes.Peer{{PublicKey: kept}, {PublicKey: removed}}},
@@ -77,7 +76,7 @@ func TestSyncRemovesMissingPeers(t *testing.T) {
 }
 
 func TestAttachNamesUsesPeerKeyNotDeviceName(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "peer-names.json")
+	path := t.TempDir()
 	key := wgtypes.Key{1}
 	if err := wgmeta.New(path).Update("wg0", func(names map[wgtypes.Key]string) { names[key] = "node-a" }); err != nil {
 		t.Fatal(err)

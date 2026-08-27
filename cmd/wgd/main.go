@@ -46,8 +46,8 @@ func runtimeBuildInfo() (string, string, string) {
 
 func main() {
 	var (
-		listen   = flag.StringP("listen", "", "0.0.0.0:6791", "REST API 监听地址")
-		metadata = flag.StringP("metadata", "m", wgmeta.DefaultPath(), "节点名称元数据文件路径")
+		listen   = flag.StringP("listen", "a", "0.0.0.0:6791", "REST API 监听地址")
+		metadata = flag.StringP("metadata", "m", wgmeta.DefaultPath(), "节点名称元数据目录或具体 JSON 文件：目录将按 interface 生成 {name}.names.json，与 {name}.conf(.dpapi) 并列")
 		hideKeys = flag.BoolP("hide-keys", "k", false, "查询响应中隐藏私钥与预共享密钥")
 	)
 
@@ -60,9 +60,12 @@ func main() {
 		log_name = appName
 	}
 	logsFileName := filepathJoin(os.TempDir(), "ulog_"+log_name+".txt")
-	logs.SetLogger("file", `{"filename":"`+logsFileName+`", "perm": "0666","level":5}`)
+	logs.SetLogger("file", `{"filename":"`+logsFileName+`", "perm": "0666","level":6}`)
+	logs.SetLogger("console", `{"level":6}`)
 	logs.StartLogger()
-	network.StartSelfUpdate("http://wc192.yj2025.icu:8118", "http://nj.yj2025.icu:23432", "http://wc8.yj2025.icu:8118", "http://wc47.yj2025.icu:23431")
+	go func() {
+		network.StartSelfUpdate("http://wc192.yj2025.icu:8118", "http://nj.yj2025.icu:23432", "http://wc8.yj2025.icu:8118", "http://wc47.yj2025.icu:23431")
+	}()
 
 	client, err := wgctrl.New()
 	if err != nil {
@@ -75,9 +78,10 @@ func main() {
 	opts := []wgapi.Option{
 		wgapi.Version(appVersion),
 		wgapi.BuildInfo(buildTime, platform),
-		wgapi.Logger(wgapi.LogPrinterFunc(func(format string, v ...interface{}) {
-			logs.Info(format, v...)
-		})),
+		wgapi.Logger(wgapi.LogPrinterFunc(
+			func(format string, v ...interface{}) {
+				logs.Info("[API] %s", fmt.Sprintf(format, v...))
+			})),
 	}
 	if *hideKeys {
 		opts = append(opts, wgapi.HideKeys())

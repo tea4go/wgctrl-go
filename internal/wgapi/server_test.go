@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -36,7 +35,7 @@ func (c *fakeClient) ConfigureDevice(_ string, cfg wgtypes.Config) error {
 
 func newTestServer(t *testing.T, c Client) (*httptest.Server, string) {
 	t.Helper()
-	srv := New(c, filepath.Join(t.TempDir(), "peer-names.json"))
+	srv := New(c, t.TempDir())
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts, srv.metadata
@@ -80,6 +79,7 @@ func TestHealth(t *testing.T) {
 
 func TestAutotest(t *testing.T) {
 	ts, _ := newTestServer(t, &fakeClient{})
+	t.Logf("%s", ts.URL)
 	req := httptest.NewRequest(http.MethodGet, ts.URL+"/autotest", nil)
 	rec := httptest.NewRecorder()
 	ts.Config.Handler.ServeHTTP(rec, req)
@@ -111,7 +111,7 @@ func TestVersion(t *testing.T) {
 func TestVersionIncludesBuildInfo(t *testing.T) {
 	srv := New(
 		&fakeClient{},
-		filepath.Join(t.TempDir(), "peer-names.json"),
+		t.TempDir(),
 		Version("wgctrl-go wgd v4.1.0"),
 		BuildInfo("2026-08-26(21:00:00)", "linux-amd64"),
 	)
@@ -141,9 +141,18 @@ func TestInterfaces(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/interfaces", nil)
 	rec := httptest.NewRecorder()
 	ts.Config.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%q", rec.Code, rec.Body.String())
+	}
 	var got []string
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("解析响应失败: %v, body=%q", err, rec.Body.String())
+	}
+	t.Logf("接口列表(原始body): %s", rec.Body.String())
+	t.Logf("接口列表(已解析): %v", got)
+	t.Logf("接口总数: %d", len(got))
+	for i, name := range got {
+		t.Logf("  [%d] %s", i, name)
 	}
 	if len(got) != 2 || got[0] != "wg0" || got[1] != "wg1" {
 		t.Fatalf("interfaces=%v", got)
@@ -181,7 +190,7 @@ func TestGetDeviceNotFound(t *testing.T) {
 
 func TestHideKeys(t *testing.T) {
 	c := &fakeClient{device: sampleDevice()}
-	srv := New(c, filepath.Join(t.TempDir(), "peer-names.json"), HideKeys())
+	srv := New(c, t.TempDir(), HideKeys())
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	req := httptest.NewRequest(http.MethodGet, ts.URL+"/api/v1/devices/wg0", nil)
