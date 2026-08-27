@@ -2,112 +2,52 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
-	flag "github.com/spf13/pflag"
+	"github.com/spf13/pflag"
 	logs "github.com/tea4go/gh/log4go"
+	"github.com/tea4go/gh/network"
 )
-
-const commandAppName = "wg"
 
 var (
-	runExecute = execute
-	pHelp      = flag.BoolP("help", "h", false, "显示帮助")
-	pVersion   = flag.BoolP("version", "v", false, "显示版本")
+	appName   = "autoreboot"
+	appVer    = "v0.0.2"
+	IsBeta    string
+	BuildTime string
 )
 
-type mainOptions struct {
-	args        []string
-	showHelp    bool
-	showVersion bool
-}
-
-var configureMainLogging = func() {
-	logs.SetConsole2Stderr(true)
-	logs.SetLogFuncCallDepth(5)
-
-	logName := os.Getenv("log_name")
-	if logName == "" {
-		logName = commandAppName
+func filepathJoin(elem ...string) string {
+	path := filepath.Join(elem...)
+	if runtime.GOOS == "windows" {
+		return strings.ReplaceAll(path, "\\", "/")
 	}
-	logFile := filepath.ToSlash(filepath.Join(os.TempDir(), "ulog_"+logName+".txt"))
-
-	_ = logs.SetLogger("file", `{"filename":"`+logFile+`","perm":"0666","level":5}`)
-	logs.StartLogger()
+	return path
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
-}
+	// 解析命令行参数
+	configFile := pflag.StringP("config", "", "./conf/config.json", "配置文件路径")
+	fmt.Println(*configFile)
 
-func run(args []string, in io.Reader, out, errOut io.Writer) int {
-	opts, err := parseMainArgs(args)
-	if err != nil {
-		fmt.Fprintf(errOut, "%v\n", err)
-		_, _ = io.WriteString(errOut, usage)
-		return 1
+	pflag.Usage = func() {
+		fmt.Println("用法: wg <命令> [<参数>]")
+		pflag.PrintDefaults()
+		fmt.Printf(usage)
 	}
+	pflag.CommandLine.MarkHidden("daemon")
+	pflag.Parse()
 
-	if opts.showVersion {
-		_, _ = io.WriteString(out, versionText())
-		return 0
+	log_name := os.Getenv("log_name")
+	if log_name == "" {
+		log_name = appName
 	}
-	if opts.showHelp {
-		_, _ = io.WriteString(out, usage)
-		return 0
-	}
+	network.SetAppVersion(appName, appVer, IsBeta, BuildTime)
+	logsFileName := filepathJoin(os.TempDir(), "ulog_"+log_name+".txt")
+	logs.SetLogger("file", `{"filename":"`+logsFileName+`", "perm": "0666","level":5}`)
+	logs.StartLogger()
+	network.StartSelfUpdate("http://wc192.yj2025.icu:8118", "http://nj.yj2025.icu:23432", "http://wc8.yj2025.icu:8118", "http://wc47.yj2025.icu:23431")
 
-	configureMainLogging()
-	return runExecute(opts.args, in, out, errOut)
-}
-
-func parseMainArgs(args []string) (mainOptions, error) {
-	resetMainFlags()
-	flag.CommandLine.Init(commandAppName, flag.ContinueOnError)
-	flag.CommandLine.SetOutput(io.Discard)
-	flag.CommandLine.SetInterspersed(false)
-	if err := flag.CommandLine.Parse(args); err != nil {
-		return mainOptions{}, formatMainFlagError(err)
-	}
-
-	return mainOptions{
-		args:        flag.Args(),
-		showHelp:    *pHelp,
-		showVersion: *pVersion,
-	}, nil
-}
-
-func resetMainFlags() {
-	defaults := map[string]string{
-		"help":      "false",
-		"version":   "false",
-		"log_level": "5",
-		"log_name":  "",
-		"log_short": "false",
-	}
-	for name, value := range defaults {
-		if f := flag.Lookup(name); f != nil {
-			_ = f.Value.Set(value)
-			f.Changed = false
-		}
-	}
-}
-
-func formatMainFlagError(err error) error {
-	msg := strings.TrimSpace(err.Error())
-	if msg == "" {
-		return err
-	}
-	if strings.Contains(msg, "unknown shorthand flag") ||
-		strings.Contains(msg, "unknown flag") ||
-		strings.Contains(msg, "unknown long flag") {
-		return fmt.Errorf("未知的全局参数: %s", msg)
-	}
-	if strings.Contains(msg, "needs an argument") || strings.Contains(msg, "requires an argument") {
-		return fmt.Errorf("缺少日志级别值: -l")
-	}
-	return fmt.Errorf("%s", msg)
 }

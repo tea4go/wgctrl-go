@@ -6,19 +6,7 @@ import (
 	"runtime"
 )
 
-var (
-	appName   = "wg"
-	version   = "v1.0.20260223"
-	IsBeta    string
-	BuildTime = ""
-)
-
-const usage = "用法: wg [-l <0-7>] <命令> [<参数>]\n\n" +
-	"全局参数:\n" +
-	"  -l, --log_level <0-7>: 设置日志级别，数字越大日志越详细\n" +
-	"  -N, --log_name <名称>: 设置日志名称\n" +
-	"      --log_short: 使用简化日志格式\n\n" +
-	"可用子命令:\n" +
+const usage = "可用子命令:\n" +
 	"  show: 显示当前配置和设备信息\n" +
 	"  showconf: 显示指定 WireGuard 接口的当前配置，供 `setconf' 使用\n" +
 	"  set: 修改当前配置、添加对等节点、移除对等节点或修改对等节点\n" +
@@ -39,7 +27,7 @@ func versionText() string {
 		"wireguard-tools %s - https://git.zx2c4.com/wireguard-tools/\n"+
 			"Build Time : %s\n"+
 			"Platform   : %s-%s\n",
-		version,
+		appVer,
 		buildTime,
 		runtime.GOOS,
 		runtime.GOARCH,
