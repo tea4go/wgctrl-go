@@ -28,10 +28,6 @@ func filepathJoin(elem ...string) string {
 }
 
 func main() {
-	// 解析命令行参数
-	configFile := pflag.StringP("config", "", "./conf/config.json", "配置文件路径")
-	fmt.Println(*configFile)
-
 	pflag.Usage = func() {
 		fmt.Println("用法: wg <命令> [<参数>]")
 		pflag.PrintDefaults()
@@ -50,4 +46,5 @@ func main() {
 	logs.StartLogger()
 	network.StartSelfUpdate("http://wc192.yj2025.icu:8118", "http://nj.yj2025.icu:23432", "http://wc8.yj2025.icu:8118", "http://wc47.yj2025.icu:23431")
 
+	execute(pflag.Args(), os.Stdin, os.Stdout, os.Stderr)
 }
