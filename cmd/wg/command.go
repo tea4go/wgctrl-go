@@ -18,7 +18,7 @@ const usage = "可用子命令:\n" +
 	"  wg setconf  wg0 wg0.conf    # 将 wg0.conf 配置文件应用到 wg0 接口\n" +
 	"  wg addconf  wg0 wg0.conf    # 向 wg0 接口追加 wg0.conf 配置文件\n" +
 	"  wg syncconf wg0 wg0.conf    # 将 wg0.conf 配置文件同步到 wg0 接口\n" +
-	"  wg syncgitee wg0 token [gistId] [文件名] # 创建或合并同步 wg0 节点配置\n"
+	"  wg --gitee_token token syncgitee wg0 [gistId] [文件名] # 创建或合并同步 wg0 节点配置\n"
 
 type commandFunc func(args []string, in io.Reader, out, errOut io.Writer) int
 

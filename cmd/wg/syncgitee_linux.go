@@ -39,18 +39,54 @@ var newSyncGiteeClient = func() (syncGiteeDeviceClient, error) { return wgctrl.N
 var syncGiteeBaseURL = "https://gitee.com/api/v5"
 var syncGiteeHTTPClient = http.DefaultClient
 var syncGiteeHostname = os.Hostname
-var syncGiteePublicIP = func() net.IP { return nil }
+var syncGiteePublicIP = lookupSyncGiteePublicIP
+var syncGiteePublicIPURLs = []string{
+	"https://ip.cn",
+	"https://cip.cc",
+	"https://ipinfo.io/ip",
+	"https://ifconfig.me/ip",
+	"https://ipx.sh/ip",
+	"https://api.ip.sb/ip",
+	"https://ident.me",
+}
+var syncGiteePublicIPHTTPClient = &http.Client{Timeout: 5 * time.Second}
 var syncGiteeInterfaceAddresses = interfaceAddresses
 
+func lookupSyncGiteePublicIP() net.IP {
+	for _, url := range syncGiteePublicIPURLs {
+		resp, err := syncGiteePublicIPHTTPClient.Get(url)
+		if err != nil {
+			continue
+		}
+		var content strings.Builder
+		_, _ = io.Copy(&content, resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			continue
+		}
+		for _, field := range strings.Fields(content.String()) {
+			field = strings.Trim(field, " \t\r\n:：,，;；()（）[]{}<>")
+			if ip := net.ParseIP(field); ip != nil {
+				return ip
+			}
+		}
+	}
+	return nil
+}
+
 func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
-	const usage = "用法: wg syncgitee <接口> <token> [gistId] [文件名]"
-	if len(args) < 2 || len(args) > 4 {
+	const usage = "用法: wg syncgitee <接口> [gistId] [文件名]"
+	if len(args) < 1 || len(args) > 3 {
 		fmt.Fprintln(errOut, usage)
 		return 1
 	}
+	if strings.TrimSpace(syncGiteeToken) == "" {
+		fmt.Fprintln(errOut, "错误: 必须通过 --gitee_token 或 gitee_token 环境变量提供 Gitee token")
+		return 1
+	}
 	filename := "default"
-	if len(args) == 4 {
-		filename = args[3]
+	if len(args) == 3 {
+		filename = args[2]
 	}
 	client, err := newSyncGiteeClient()
 	if err != nil {
@@ -81,8 +117,8 @@ func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 		fmt.Fprintln(errOut, err)
 		return 1
 	}
-	if len(args) == 2 {
-		gistID, err := createGiteeGist(args[1], filename, encodeSyncGiteeNodes(local))
+	if len(args) == 1 {
+		gistID, err := createGiteeGist(syncGiteeToken, filename, encodeSyncGiteeNodes(local))
 		if err != nil {
 			fmt.Fprintln(errOut, err)
 			return 1
@@ -90,7 +126,7 @@ func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 		fmt.Fprintf(out, "已创建 Gitee 代码片段 %s，并同步 %d 个节点到文件 %s\n", gistID, len(local), filename)
 		return 0
 	}
-	remoteContent, err := readGiteeGist(args[1], args[2], filename)
+	remoteContent, err := readGiteeGist(syncGiteeToken, args[1], filename)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 1
@@ -101,7 +137,7 @@ func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 		return 1
 	}
 	content := encodeSyncGiteeNodes(mergeSyncGiteeNodes(remote, local))
-	if err := updateGiteeGist(args[1], args[2], filename, content); err != nil {
+	if err := updateGiteeGist(syncGiteeToken, args[1], filename, content); err != nil {
 		fmt.Fprintln(errOut, err)
 		return 1
 	}

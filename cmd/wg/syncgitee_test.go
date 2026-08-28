@@ -16,6 +16,9 @@ import (
 )
 
 func TestSyncGiteeCommandCreatesDefaultFile(t *testing.T) {
+	oldToken := syncGiteeToken
+	syncGiteeToken = "secret"
+	t.Cleanup(func() { syncGiteeToken = oldToken })
 	oldClient, oldBaseURL := newSyncGiteeClient, syncGiteeBaseURL
 	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
 	oldPublicIP := syncGiteePublicIP
@@ -64,7 +67,7 @@ func TestSyncGiteeCommandCreatesDefaultFile(t *testing.T) {
 	syncGiteeBaseURL = server.URL
 
 	var out, errOut bytes.Buffer
-	code := syncgitee([]string{"wgtun5", "secret", "gist-1"}, strings.NewReader(""), &out, &errOut)
+	code := syncgitee([]string{"wgtun5", "gist-1"}, strings.NewReader(""), &out, &errOut)
 	if code != 0 {
 		t.Fatalf("unexpected exit code: %d, stderr=%q", code, errOut.String())
 	}
@@ -82,6 +85,9 @@ func TestSyncGiteeCommandCreatesDefaultFile(t *testing.T) {
 }
 
 func TestSyncGiteeCommandCreatesGistWhenIDIsOmitted(t *testing.T) {
+	oldToken := syncGiteeToken
+	syncGiteeToken = "secret"
+	t.Cleanup(func() { syncGiteeToken = oldToken })
 	oldClient, oldBaseURL := newSyncGiteeClient, syncGiteeBaseURL
 	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
 	oldPublicIP := syncGiteePublicIP
@@ -117,7 +123,7 @@ func TestSyncGiteeCommandCreatesGistWhenIDIsOmitted(t *testing.T) {
 	syncGiteeBaseURL = server.URL
 
 	var out, errOut bytes.Buffer
-	if code := syncgitee([]string{"wg0", "secret"}, strings.NewReader(""), &out, &errOut); code != 0 {
+	if code := syncgitee([]string{"wg0"}, strings.NewReader(""), &out, &errOut); code != 0 {
 		t.Fatalf("unexpected exit code: %d, stderr=%q", code, errOut.String())
 	}
 	if out.String() != "已创建 Gitee 代码片段 new-gist-id，并同步 1 个节点到文件 default\n" {
@@ -134,16 +140,22 @@ func TestSyncGiteeCommandCreatesGistWhenIDIsOmitted(t *testing.T) {
 }
 
 func TestSyncGiteeCommandUsage(t *testing.T) {
+	oldToken := syncGiteeToken
+	syncGiteeToken = ""
+	t.Cleanup(func() { syncGiteeToken = oldToken })
 	var out, errOut bytes.Buffer
 	if code := syncgitee([]string{"wg0"}, strings.NewReader(""), &out, &errOut); code != 1 {
 		t.Fatalf("unexpected exit code: %d", code)
 	}
-	if want := "用法: wg syncgitee <接口> <token> [gistId] [文件名]\n"; errOut.String() != want {
+	if want := "错误: 必须通过 --gitee_token 或 gitee_token 环境变量提供 Gitee token\n"; errOut.String() != want {
 		t.Fatalf("unexpected stderr: %q", errOut.String())
 	}
 }
 
 func TestSyncGiteeCommandMergesCustomFile(t *testing.T) {
+	oldToken := syncGiteeToken
+	syncGiteeToken = "secret"
+	t.Cleanup(func() { syncGiteeToken = oldToken })
 	oldClient, oldBaseURL := newSyncGiteeClient, syncGiteeBaseURL
 	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
 	oldPublicIP := syncGiteePublicIP
@@ -189,7 +201,7 @@ func TestSyncGiteeCommandMergesCustomFile(t *testing.T) {
 	syncGiteeBaseURL = server.URL
 
 	var out, errOut bytes.Buffer
-	if code := syncgitee([]string{"wg0", "secret", "gist-1", "nodes.conf"}, strings.NewReader(""), &out, &errOut); code != 0 {
+	if code := syncgitee([]string{"wg0", "gist-1", "nodes.conf"}, strings.NewReader(""), &out, &errOut); code != 0 {
 		t.Fatalf("unexpected exit code: %d, stderr=%q", code, errOut.String())
 	}
 	files := patched["files"].(map[string]interface{})
@@ -207,6 +219,9 @@ func TestSyncGiteeCommandMergesCustomFile(t *testing.T) {
 }
 
 func TestSyncGiteeCommandRejectsInvalidRemoteWithoutPatch(t *testing.T) {
+	oldToken := syncGiteeToken
+	syncGiteeToken = "super-secret"
+	t.Cleanup(func() { syncGiteeToken = oldToken })
 	oldClient, oldBaseURL := newSyncGiteeClient, syncGiteeBaseURL
 	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
 	oldPublicIP := syncGiteePublicIP
@@ -235,7 +250,7 @@ func TestSyncGiteeCommandRejectsInvalidRemoteWithoutPatch(t *testing.T) {
 	syncGiteeBaseURL = server.URL
 
 	var out, errOut bytes.Buffer
-	if code := syncgitee([]string{"wg0", "super-secret", "gist-1"}, strings.NewReader(""), &out, &errOut); code != 1 {
+	if code := syncgitee([]string{"wg0", "gist-1"}, strings.NewReader(""), &out, &errOut); code != 1 {
 		t.Fatalf("unexpected exit code: %d", code)
 	}
 	if patched {
@@ -280,6 +295,51 @@ func TestSyncGiteeNodesAddressAndNameFallbacks(t *testing.T) {
 	}
 	if got := nodes[0].Endpoint.String(); got != "[2001:db8::1]:51820" {
 		t.Fatalf("unexpected IPv6 fallback endpoint: %q", got)
+	}
+}
+
+func TestSyncGiteePublicIPUsesFirstValidResponse(t *testing.T) {
+	oldURLs, oldClient := syncGiteePublicIPURLs, syncGiteePublicIPHTTPClient
+	t.Cleanup(func() {
+		syncGiteePublicIPURLs, syncGiteePublicIPHTTPClient = oldURLs, oldClient
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/invalid":
+			io.WriteString(w, "service unavailable")
+		case "/ip":
+			io.WriteString(w, "当前 IP：203.0.113.10\n")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	syncGiteePublicIPURLs = []string{server.URL + "/invalid", server.URL + "/ip"}
+	syncGiteePublicIPHTTPClient = server.Client()
+
+	if got := lookupSyncGiteePublicIP(); !got.Equal(net.ParseIP("203.0.113.10")) {
+		t.Fatalf("unexpected public IP: %v", got)
+	}
+}
+
+func TestSyncGiteePublicIPReturnsNilWhenServicesFail(t *testing.T) {
+	oldURLs, oldClient := syncGiteePublicIPURLs, syncGiteePublicIPHTTPClient
+	t.Cleanup(func() {
+		syncGiteePublicIPURLs, syncGiteePublicIPHTTPClient = oldURLs, oldClient
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "failed", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	syncGiteePublicIPURLs = []string{server.URL}
+	syncGiteePublicIPHTTPClient = server.Client()
+
+	if got := lookupSyncGiteePublicIP(); got != nil {
+		t.Fatalf("unexpected public IP: %v", got)
 	}
 }
 

@@ -25,17 +25,17 @@ $env:GOTMPDIR = Join-Path $SCRIPT_DIR '.gotmp'
 switch ($OS) {
     'windows' {
         $TargetGOOS = 'windows'
-        $WG_OUT_BIN_NAME = 'wg.exe'
+        $WG_OUT_BIN_NAME = 'wgc.exe'
         $WGD_OUT_BIN_NAME = 'wgd.exe'
     }
     'linux' {
         $TargetGOOS = 'linux'
-        $WG_OUT_BIN_NAME = 'wg'
+        $WG_OUT_BIN_NAME = 'wgc'
         $WGD_OUT_BIN_NAME = 'wgd'
     }
     'macos' {
         $TargetGOOS = 'darwin'
-        $WG_OUT_BIN_NAME = 'wg'
+        $WG_OUT_BIN_NAME = 'wgc'
         $WGD_OUT_BIN_NAME = 'wgd'
     }
 }
@@ -174,7 +174,7 @@ $env:GOARCH = $Arch
 Write-Host "执行构建: GOOS=$TargetGOOS GOARCH=$Arch go build -buildvcs=false -trimpath -ldflags `"$LDFLAGS`" -o `"$WG_OUT_BIN_NAME`" $WG_TARGET_PACKAGE"
 & go build -buildvcs=false -trimpath -ldflags $LDFLAGS -o $WG_OUT_BIN_NAME $WG_TARGET_PACKAGE
 if ($LASTEXITCODE -ne 0) {
-    Write-Host '[错误] 构建 wg 失败。' -ForegroundColor Red
+    Write-Host '[错误] 构建 wgc 失败。' -ForegroundColor Red
     exit $LASTEXITCODE
 }
 Write-Host "构建成功: $WG_EXE" -ForegroundColor Green

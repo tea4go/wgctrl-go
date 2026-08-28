@@ -10,13 +10,15 @@ import (
 	"github.com/spf13/pflag"
 	logs "github.com/tea4go/gh/log4go"
 	"github.com/tea4go/gh/network"
+	"github.com/tea4go/gh/utils"
 )
 
 var (
-	appName   = "wg"
-	appVer    = "v0.0.2"
-	IsBeta    string
-	BuildTime string
+	appName     = "wg"
+	appVer      = "v0.0.2"
+	IsBeta      string
+	BuildTime   string
+	pGiteeToken = pflag.String("gitee_token", "", "Gitee 访问令牌，也可通过同名环境变量设置")
 )
 
 func filepathJoin(elem ...string) string {
@@ -28,6 +30,7 @@ func filepathJoin(elem ...string) string {
 }
 
 func main() {
+	utils.LoadDotEnv()
 	pflag.Usage = func() {
 		fmt.Println("用法: wg <命令> [<参数>]")
 		pflag.PrintDefaults()
@@ -35,6 +38,7 @@ func main() {
 	}
 	pflag.CommandLine.MarkHidden("daemon")
 	pflag.Parse()
+	syncGiteeToken = logs.GetParamString("gitee_token", *pGiteeToken, "")
 
 	log_name := os.Getenv("log_name")
 	if log_name == "" {

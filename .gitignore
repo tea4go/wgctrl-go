@@ -1,10 +1,11 @@
-cmd/wg/wg.exe
-wgd
 wg
+wgd
+wgc
 *.test
 go.mod
 .gocache
 .gotmp
+wgc.exe
 wg.exe
 wgd.exe
 VERSION.txt
