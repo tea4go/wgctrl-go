@@ -13,12 +13,12 @@ const usage = "可用子命令:\n" +
 	"  syncconf: 将配置文件同步到 WireGuard 接口\n" +
 	"  syncgitee: 将接口节点配置合并同步到 Gitee 代码片段\n" +
 	"常用例子:\n" +
-	"  wg show                     # 显示当前配置和设备信息\n" +
-	"  wg showconf wg0             # 显示 wg0 接口的当前配置，供 `setconf' 使用\n" +
-	"  wg setconf  wg0 wg0.conf    # 将 wg0.conf 配置文件应用到 wg0 接口\n" +
-	"  wg addconf  wg0 wg0.conf    # 向 wg0 接口追加 wg0.conf 配置文件\n" +
-	"  wg syncconf wg0 wg0.conf    # 将 wg0.conf 配置文件同步到 wg0 接口\n" +
-	"  wg --gitee_token token syncgitee wg0 [gistId] [文件名] # 创建或合并同步 wg0 节点配置\n"
+	"  wgc show                     # 显示当前配置和设备信息\n" +
+	"  wgc showconf wg0             # 显示 wg0 接口的当前配置，供 `setconf' 使用\n" +
+	"  wgc setconf  wg0 wg0.conf    # 将 wg0.conf 配置文件应用到 wg0 接口\n" +
+	"  wgc addconf  wg0 wg0.conf    # 向 wg0 接口追加 wg0.conf 配置文件\n" +
+	"  wgc syncconf wg0 wg0.conf    # 将 wg0.conf 配置文件同步到 wg0 接口\n" +
+	"  wgc --gitee_token token syncgitee wg0 [gistId] [文件名] # 创建或合并同步 wg0 节点配置\n"
 
 type commandFunc func(args []string, in io.Reader, out, errOut io.Writer) int
 
