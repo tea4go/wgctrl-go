@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -77,6 +78,24 @@ func lookupSyncGiteePublicIP() net.IP {
 	return nil
 }
 
+type syncGiteeDeviceReadError struct {
+	name string
+	err  error
+}
+
+func (e *syncGiteeDeviceReadError) Error() string {
+	if errors.Is(e.err, os.ErrNotExist) {
+		return fmt.Sprintf("本地 WireGuard 接口 %q 不存在；syncgitee 只会上传已有本地接口数据到 Gitee", e.name)
+	}
+	return fmt.Sprintf("无法读取接口 %s: %v", e.name, e.err)
+}
+
+func (e *syncGiteeDeviceReadError) Unwrap() error { return e.err }
+
+func syncGiteeDeviceError(name string, err error) error {
+	return &syncGiteeDeviceReadError{name: name, err: err}
+}
+
 func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 	const usage = "用法: wg syncgitee <接口> [gistId] [文件名]"
 	if len(args) < 1 || len(args) > 3 {
@@ -99,7 +118,7 @@ func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 	defer client.Close()
 	device, err := client.Device(args[0])
 	if err != nil {
-		fmt.Fprintln(errOut, err)
+		fmt.Fprintln(errOut, syncGiteeDeviceError(args[0], err))
 		return 1
 	}
 	if err := wgconf.AttachNames(device, wgmeta.DefaultPath()); err != nil {

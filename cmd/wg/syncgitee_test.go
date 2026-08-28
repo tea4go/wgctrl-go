@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -363,10 +366,110 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
-type syncGiteeTestDeviceClient struct{ device *wgtypes.Device }
+type syncGiteeTestDeviceClient struct {
+	device *wgtypes.Device
+	err    error
+}
 
-func (c *syncGiteeTestDeviceClient) Device(string) (*wgtypes.Device, error) { return c.device, nil }
-func (*syncGiteeTestDeviceClient) Close() error                             { return nil }
+func (c *syncGiteeTestDeviceClient) Device(string) (*wgtypes.Device, error) {
+	return c.device, c.err
+}
+func (*syncGiteeTestDeviceClient) Close() error { return nil }
+
+func TestSyncGiteeCommandReportsMissingLocalInterface(t *testing.T) {
+	oldToken, oldClient := syncGiteeToken, newSyncGiteeClient
+	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
+	oldPublicIP, oldHTTPClient := syncGiteePublicIP, syncGiteeHTTPClient
+	t.Cleanup(func() {
+		syncGiteeToken, newSyncGiteeClient = oldToken, oldClient
+		syncGiteeInterfaceAddresses, syncGiteeHostname = oldAddresses, oldHostname
+		syncGiteePublicIP, syncGiteeHTTPClient = oldPublicIP, oldHTTPClient
+	})
+	syncGiteeToken = "secret"
+	calls := 0
+	newSyncGiteeClient = func() (syncGiteeDeviceClient, error) {
+		return &syncGiteeTestDeviceClient{err: fmt.Errorf("device lookup: %w", syscall.ENOENT)}, nil
+	}
+	syncGiteeInterfaceAddresses = func(string) ([]net.IPNet, error) {
+		calls++
+		return nil, nil
+	}
+	syncGiteeHostname = func() (string, error) {
+		calls++
+		return "host-a", nil
+	}
+	syncGiteePublicIP = func() net.IP {
+		calls++
+		return net.ParseIP("203.0.113.10")
+	}
+	syncGiteeHTTPClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("unexpected Gitee request")
+	})}
+	var out, errOut bytes.Buffer
+	if code := syncgitee([]string{"wgtun"}, strings.NewReader(""), &out, &errOut); code != 1 {
+		t.Fatalf("unexpected exit code: %d", code)
+	}
+	message := errOut.String()
+	for _, want := range []string{"本地 WireGuard 接口 \"wgtun\" 不存在", "syncgitee 只会上传已有本地接口数据到 Gitee"} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("error missing %q: %q", want, message)
+		}
+	}
+	if strings.Contains(message, "file does not exist") || strings.Contains(message, "ENOENT") {
+		t.Fatalf("error leaked low-level message: %q", message)
+	}
+	if calls != 0 {
+		t.Fatalf("public IP lookup called %d times", calls)
+	}
+}
+
+func TestSyncGiteeCommandPreservesNonMissingDeviceError(t *testing.T) {
+	oldToken, oldClient := syncGiteeToken, newSyncGiteeClient
+	t.Cleanup(func() { syncGiteeToken, newSyncGiteeClient = oldToken, oldClient })
+	syncGiteeToken = "secret"
+	deviceErr := fmt.Errorf("device lookup: %w", syscall.EPERM)
+	newSyncGiteeClient = func() (syncGiteeDeviceClient, error) {
+		return &syncGiteeTestDeviceClient{err: deviceErr}, nil
+	}
+	var out, errOut bytes.Buffer
+	if code := syncgitee([]string{"wgtun"}, strings.NewReader(""), &out, &errOut); code != 1 {
+		t.Fatalf("unexpected exit code: %d", code)
+	}
+	if message := errOut.String(); !strings.Contains(message, "无法读取接口 wgtun") || !strings.Contains(message, "operation not permitted") {
+		t.Fatalf("unexpected error: %q", message)
+	}
+	if err := syncGiteeDeviceError("wgtun", deviceErr); !errors.Is(err, syscall.EPERM) {
+		t.Fatal("device error chain is not identifiable")
+	}
+}
+
+func TestSyncGiteeCommandClassifiesWrappedNotExistErrors(t *testing.T) {
+	for _, deviceErr := range []error{
+		os.ErrNotExist,
+		syscall.ENOENT,
+		&os.PathError{Op: "open", Path: "wg", Err: syscall.ENOENT},
+		fmt.Errorf("device lookup: %w", syscall.ENOENT),
+	} {
+		t.Run(deviceErr.Error(), func(t *testing.T) {
+			oldToken, oldClient := syncGiteeToken, newSyncGiteeClient
+			t.Cleanup(func() { syncGiteeToken, newSyncGiteeClient = oldToken, oldClient })
+			syncGiteeToken = "secret"
+			newSyncGiteeClient = func() (syncGiteeDeviceClient, error) {
+				return &syncGiteeTestDeviceClient{err: deviceErr}, nil
+			}
+			var out, errOut bytes.Buffer
+			syncgitee([]string{"wgtun"}, strings.NewReader(""), &out, &errOut)
+			message := errOut.String()
+			if strings.Contains(message, "file does not exist") || strings.Contains(message, "ENOENT") {
+				t.Fatalf("unexpected low-level error: %q", message)
+			}
+			if !strings.Contains(message, "本地 WireGuard 接口 \"wgtun\" 不存在") {
+				t.Fatalf("unexpected error: %q", message)
+			}
+		})
+	}
+}
 
 func TestParseSyncGiteeNodesAndMerge(t *testing.T) {
 	remoteKey := testSyncKey(1)
