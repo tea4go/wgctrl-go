@@ -43,8 +43,8 @@ var syncGiteePublicIP = func() net.IP { return nil }
 var syncGiteeInterfaceAddresses = interfaceAddresses
 
 func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
-	const usage = "用法: wg syncgitee <接口> <token> <gistId> [文件名]"
-	if len(args) < 3 || len(args) > 4 {
+	const usage = "用法: wg syncgitee <接口> <token> [gistId] [文件名]"
+	if len(args) < 2 || len(args) > 4 {
 		fmt.Fprintln(errOut, usage)
 		return 1
 	}
@@ -80,6 +80,15 @@ func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 1
+	}
+	if len(args) == 2 {
+		gistID, err := createGiteeGist(args[1], filename, encodeSyncGiteeNodes(local))
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return 1
+		}
+		fmt.Fprintf(out, "已创建 Gitee 代码片段 %s，并同步 %d 个节点到文件 %s\n", gistID, len(local), filename)
+		return 0
 	}
 	remoteContent, err := readGiteeGist(args[1], args[2], filename)
 	if err != nil {
@@ -204,6 +213,21 @@ func updateGiteeGist(token, gistID, filename, content string) error {
 	return giteeRequest(http.MethodPatch, gistID, token, body, nil)
 }
 
+func createGiteeGist(token, filename, content string) (string, error) {
+	body := map[string]interface{}{
+		"description": "WireGuard 节点配置",
+		"public":      false,
+		"files":       map[string]interface{}{filename: map[string]string{"content": content}},
+	}
+	var gist struct {
+		ID string `json:"id"`
+	}
+	if err := giteeRequest(http.MethodPost, "", token, body, &gist); err != nil {
+		return "", err
+	}
+	return gist.ID, nil
+}
+
 func giteeRequest(method, gistID, token string, body, result interface{}) error {
 	var reader io.Reader
 	if body != nil {
@@ -213,7 +237,10 @@ func giteeRequest(method, gistID, token string, body, result interface{}) error 
 		}
 		reader = &b
 	}
-	url := strings.TrimRight(syncGiteeBaseURL, "/") + "/gists/" + gistID
+	url := strings.TrimRight(syncGiteeBaseURL, "/") + "/gists"
+	if gistID != "" {
+		url += "/" + gistID
+	}
 	req, err := http.NewRequest(method, url, reader)
 	if err != nil {
 		return err

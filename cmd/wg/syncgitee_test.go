@@ -81,12 +81,64 @@ func TestSyncGiteeCommandCreatesDefaultFile(t *testing.T) {
 	}
 }
 
+func TestSyncGiteeCommandCreatesGistWhenIDIsOmitted(t *testing.T) {
+	oldClient, oldBaseURL := newSyncGiteeClient, syncGiteeBaseURL
+	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
+	oldPublicIP := syncGiteePublicIP
+	t.Cleanup(func() {
+		newSyncGiteeClient, syncGiteeBaseURL = oldClient, oldBaseURL
+		syncGiteeInterfaceAddresses, syncGiteeHostname = oldAddresses, oldHostname
+		syncGiteePublicIP = oldPublicIP
+	})
+	privateKey := testSyncKey(7)
+	newSyncGiteeClient = func() (syncGiteeDeviceClient, error) {
+		return &syncGiteeTestDeviceClient{device: &wgtypes.Device{
+			Name: "wg0", PrivateKey: privateKey, HasPrivateKey: true,
+		}}, nil
+	}
+	syncGiteeInterfaceAddresses = func(string) ([]net.IPNet, error) { return nil, nil }
+	syncGiteeHostname = func() (string, error) { return "host-a", nil }
+	syncGiteePublicIP = func() net.IP { return nil }
+
+	var created map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/gists" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.URL.Query().Get("access_token") != "secret" {
+			t.Fatalf("unexpected access token: %q", r.URL.Query().Get("access_token"))
+		}
+		if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+			t.Fatal(err)
+		}
+		io.WriteString(w, `{"id":"new-gist-id"}`)
+	}))
+	defer server.Close()
+	syncGiteeBaseURL = server.URL
+
+	var out, errOut bytes.Buffer
+	if code := syncgitee([]string{"wg0", "secret"}, strings.NewReader(""), &out, &errOut); code != 0 {
+		t.Fatalf("unexpected exit code: %d, stderr=%q", code, errOut.String())
+	}
+	if out.String() != "已创建 Gitee 代码片段 new-gist-id，并同步 1 个节点到文件 default\n" {
+		t.Fatalf("unexpected stdout: %q", out.String())
+	}
+	if created["description"] != "WireGuard 节点配置" || created["public"] != false {
+		t.Fatalf("unexpected gist settings: %#v", created)
+	}
+	files := created["files"].(map[string]interface{})
+	content := files["default"].(map[string]interface{})["content"].(string)
+	if !strings.Contains(content, "PublicKey = "+privateKey.PublicKey().String()) {
+		t.Fatalf("unexpected content: %q", content)
+	}
+}
+
 func TestSyncGiteeCommandUsage(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if code := syncgitee([]string{"wg0"}, strings.NewReader(""), &out, &errOut); code != 1 {
 		t.Fatalf("unexpected exit code: %d", code)
 	}
-	if want := "用法: wg syncgitee <接口> <token> <gistId> [文件名]\n"; errOut.String() != want {
+	if want := "用法: wg syncgitee <接口> <token> [gistId] [文件名]\n"; errOut.String() != want {
 		t.Fatalf("unexpected stderr: %q", errOut.String())
 	}
 }
