@@ -503,6 +503,9 @@ func TestParseSyncGiteeNodesAndMerge(t *testing.T) {
 			t.Fatalf("encoded content missing %q: %q", want, encoded)
 		}
 	}
+	if strings.Contains(encoded, "PresharedKey") {
+		t.Fatalf("encoded content leaked PresharedKey: %q", encoded)
+	}
 }
 
 func TestParseSyncGiteeNodesRejectsInvalidContent(t *testing.T) {

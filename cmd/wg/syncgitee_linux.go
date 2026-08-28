@@ -441,7 +441,6 @@ func encodeSyncGiteeNodes(nodes []syncGiteeNode) string {
 		fmt.Fprintln(&b, "[Peer]")
 		fmt.Fprintf(&b, "Name = %s\n", node.Name)
 		fmt.Fprintf(&b, "PublicKey = %s\n", node.PublicKey)
-		fmt.Fprintf(&b, "PresharedKey = %s\n", node.PresharedKey)
 		if len(node.AllowedIPs) > 0 {
 			values := make([]string, len(node.AllowedIPs))
 			for i := range node.AllowedIPs {
