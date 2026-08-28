@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: cmd_tools
+title: wg 与 wgctrl 命令行工具
+scope:
+    - cmd/
+source_files: []
+depends_on: []
+related_to:
+    - path: public_api

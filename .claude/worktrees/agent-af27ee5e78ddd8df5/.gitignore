@@ -1,0 +1,10 @@
+cmd/wg/wg.exe
+wgd
+wg
+*.test
+go.mod
+.gocache
+.gotmp
+wg.exe
+wgd.exe
+VERSION.txt

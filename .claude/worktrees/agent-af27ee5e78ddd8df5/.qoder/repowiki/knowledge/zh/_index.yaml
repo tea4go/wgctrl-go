@@ -1,0 +1,77 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: master
+nodes_managed: true
+exported_at: "2026-08-27T04:56:04Z"
+modules:
+    "":
+        dir_name: wgctrl-go 跨平台 WireGuard 设备控制库
+        title: wgctrl-go 跨平台 WireGuard 设备控制库
+        scope:
+            - README.md
+            - readme_cn.md
+            - CONTRIBUTING.md
+            - CLAUDE.md
+            - .gitignore
+            - go.mod.base
+            - go.sum
+            - .cibuild.sh
+            - LICENSE.md
+            - client_integration_test.go
+            - client_test.go
+        source_files: []
+        children:
+            - ci_and_docs
+            - cmd_tools
+            - os_dispatch
+            - public_api
+        depends_on: []
+        related_to: []
+    ci_and_docs:
+        dir_name: CI 构建配置与 wg CLI 兼容设计文档
+        title: CI 构建配置与 wg CLI 兼容设计文档
+        scope:
+            - .builds/
+            - docs/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    cmd_tools:
+        dir_name: wg 与 wgctrl 命令行工具
+        title: wg 与 wgctrl 命令行工具
+        scope:
+            - cmd/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: public_api
+    os_dispatch:
+        dir_name: 操作系统后端客户端装配
+        title: 操作系统后端客户端装配
+        scope:
+            - os_linux.go
+            - os_freebsd.go
+            - os_openbsd.go
+            - os_windows.go
+            - os_userspace.go
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: public_api
+    public_api:
+        dir_name: WireGuard 设备控制公共 API 与共享类型
+        title: WireGuard 设备控制公共 API 与共享类型
+        scope:
+            - client.go
+            - doc.go
+            - wgtypes/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: cmd_tools
+            - path: os_dispatch
