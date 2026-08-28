@@ -14,11 +14,12 @@ import (
 )
 
 var (
-	appName     = "wg"
-	appVer      = "v0.0.2"
-	IsBeta      string
-	BuildTime   string
-	pGiteeToken = pflag.String("gitee_token", "", "Gitee 访问令牌，也可通过同名环境变量设置")
+	appName      = "wg"
+	appVer       = "v0.0.2"
+	IsBeta       string
+	BuildTime    string
+	pGiteeToken  = pflag.String("gitee_token", "", "Gitee 访问令牌，也可通过同名环境变量设置")
+	pGiteeGistID = pflag.String("gitee_gist_id", "", "Gitee 代码片段 ID，也可通过同名环境变量设置")
 )
 
 func filepathJoin(elem ...string) string {
@@ -39,6 +40,7 @@ func main() {
 	pflag.CommandLine.MarkHidden("daemon")
 	pflag.Parse()
 	syncGiteeToken = logs.GetParamString("gitee_token", *pGiteeToken, "")
+	syncGiteeGistID = logs.GetParamString("gitee_gist_id", *pGiteeGistID, "")
 
 	log_name := os.Getenv("log_name")
 	if log_name == "" {

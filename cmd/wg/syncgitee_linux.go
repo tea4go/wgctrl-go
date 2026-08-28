@@ -97,8 +97,8 @@ func syncGiteeDeviceError(name string, err error) error {
 }
 
 func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
-	const usage = "用法: wg syncgitee <接口> [gistId] [文件名]"
-	if len(args) < 1 || len(args) > 3 {
+	const usage = "用法: wg syncgitee <接口> [文件名]"
+	if len(args) < 1 || len(args) > 2 {
 		fmt.Fprintln(errOut, usage)
 		return 1
 	}
@@ -107,8 +107,8 @@ func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 		return 1
 	}
 	filename := "default"
-	if len(args) == 3 {
-		filename = args[2]
+	if len(args) == 2 {
+		filename = args[1]
 	}
 	client, err := newSyncGiteeClient()
 	if err != nil {
@@ -139,7 +139,7 @@ func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 		fmt.Fprintln(errOut, err)
 		return 1
 	}
-	if len(args) == 1 {
+	if strings.TrimSpace(syncGiteeGistID) == "" {
 		gistID, err := createGiteeGist(syncGiteeToken, filename, encodeSyncGiteeNodes(local))
 		if err != nil {
 			fmt.Fprintln(errOut, err)
@@ -148,7 +148,7 @@ func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 		fmt.Fprintf(out, "已创建 Gitee 代码片段 %s，并同步 %d 个节点到文件 %s\n", gistID, len(local), filename)
 		return 0
 	}
-	remoteContent, err := readGiteeGist(syncGiteeToken, args[1], filename)
+	remoteContent, err := readGiteeGist(syncGiteeToken, syncGiteeGistID, filename)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 1
@@ -159,7 +159,7 @@ func syncgitee(args []string, _ io.Reader, out, errOut io.Writer) int {
 		return 1
 	}
 	content := encodeSyncGiteeNodes(mergeSyncGiteeNodes(remote, local))
-	if err := updateGiteeGist(syncGiteeToken, args[1], filename, content); err != nil {
+	if err := updateGiteeGist(syncGiteeToken, syncGiteeGistID, filename, content); err != nil {
 		fmt.Fprintln(errOut, err)
 		return 1
 	}

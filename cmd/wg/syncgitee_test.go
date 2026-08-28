@@ -19,9 +19,9 @@ import (
 )
 
 func TestSyncGiteeCommandCreatesDefaultFile(t *testing.T) {
-	oldToken := syncGiteeToken
-	syncGiteeToken = "secret"
-	t.Cleanup(func() { syncGiteeToken = oldToken })
+	oldToken, oldGistID := syncGiteeToken, syncGiteeGistID
+	syncGiteeToken, syncGiteeGistID = "secret", "gist-1"
+	t.Cleanup(func() { syncGiteeToken, syncGiteeGistID = oldToken, oldGistID })
 	oldClient, oldBaseURL := newSyncGiteeClient, syncGiteeBaseURL
 	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
 	oldPublicIP := syncGiteePublicIP
@@ -70,7 +70,7 @@ func TestSyncGiteeCommandCreatesDefaultFile(t *testing.T) {
 	syncGiteeBaseURL = server.URL
 
 	var out, errOut bytes.Buffer
-	code := syncgitee([]string{"wgtun5", "gist-1"}, strings.NewReader(""), &out, &errOut)
+	code := syncgitee([]string{"wgtun5"}, strings.NewReader(""), &out, &errOut)
 	if code != 0 {
 		t.Fatalf("unexpected exit code: %d, stderr=%q", code, errOut.String())
 	}
@@ -88,9 +88,9 @@ func TestSyncGiteeCommandCreatesDefaultFile(t *testing.T) {
 }
 
 func TestSyncGiteeCommandCreatesGistWhenIDIsOmitted(t *testing.T) {
-	oldToken := syncGiteeToken
-	syncGiteeToken = "secret"
-	t.Cleanup(func() { syncGiteeToken = oldToken })
+	oldToken, oldGistID := syncGiteeToken, syncGiteeGistID
+	syncGiteeToken, syncGiteeGistID = "secret", ""
+	t.Cleanup(func() { syncGiteeToken, syncGiteeGistID = oldToken, oldGistID })
 	oldClient, oldBaseURL := newSyncGiteeClient, syncGiteeBaseURL
 	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
 	oldPublicIP := syncGiteePublicIP
@@ -156,9 +156,9 @@ func TestSyncGiteeCommandUsage(t *testing.T) {
 }
 
 func TestSyncGiteeCommandMergesCustomFile(t *testing.T) {
-	oldToken := syncGiteeToken
-	syncGiteeToken = "secret"
-	t.Cleanup(func() { syncGiteeToken = oldToken })
+	oldToken, oldGistID := syncGiteeToken, syncGiteeGistID
+	syncGiteeToken, syncGiteeGistID = "secret", "gist-1"
+	t.Cleanup(func() { syncGiteeToken, syncGiteeGistID = oldToken, oldGistID })
 	oldClient, oldBaseURL := newSyncGiteeClient, syncGiteeBaseURL
 	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
 	oldPublicIP := syncGiteePublicIP
@@ -204,7 +204,7 @@ func TestSyncGiteeCommandMergesCustomFile(t *testing.T) {
 	syncGiteeBaseURL = server.URL
 
 	var out, errOut bytes.Buffer
-	if code := syncgitee([]string{"wg0", "gist-1", "nodes.conf"}, strings.NewReader(""), &out, &errOut); code != 0 {
+	if code := syncgitee([]string{"wg0", "nodes.conf"}, strings.NewReader(""), &out, &errOut); code != 0 {
 		t.Fatalf("unexpected exit code: %d, stderr=%q", code, errOut.String())
 	}
 	files := patched["files"].(map[string]interface{})
@@ -222,9 +222,9 @@ func TestSyncGiteeCommandMergesCustomFile(t *testing.T) {
 }
 
 func TestSyncGiteeCommandRejectsInvalidRemoteWithoutPatch(t *testing.T) {
-	oldToken := syncGiteeToken
-	syncGiteeToken = "super-secret"
-	t.Cleanup(func() { syncGiteeToken = oldToken })
+	oldToken, oldGistID := syncGiteeToken, syncGiteeGistID
+	syncGiteeToken, syncGiteeGistID = "super-secret", "gist-1"
+	t.Cleanup(func() { syncGiteeToken, syncGiteeGistID = oldToken, oldGistID })
 	oldClient, oldBaseURL := newSyncGiteeClient, syncGiteeBaseURL
 	oldAddresses, oldHostname := syncGiteeInterfaceAddresses, syncGiteeHostname
 	oldPublicIP := syncGiteePublicIP
@@ -253,7 +253,7 @@ func TestSyncGiteeCommandRejectsInvalidRemoteWithoutPatch(t *testing.T) {
 	syncGiteeBaseURL = server.URL
 
 	var out, errOut bytes.Buffer
-	if code := syncgitee([]string{"wg0", "gist-1"}, strings.NewReader(""), &out, &errOut); code != 1 {
+	if code := syncgitee([]string{"wg0"}, strings.NewReader(""), &out, &errOut); code != 1 {
 		t.Fatalf("unexpected exit code: %d", code)
 	}
 	if patched {
