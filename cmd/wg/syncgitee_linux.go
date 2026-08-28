@@ -66,6 +66,9 @@ func lookupSyncGiteePublicIP() net.IP {
 		}
 		for _, field := range strings.Fields(content.String()) {
 			field = strings.Trim(field, " \t\r\n:：,，;；()（）[]{}<>")
+			if i := strings.LastIndex(field, "："); i >= 0 {
+				field = field[i+len("："):]
+			}
 			if ip := net.ParseIP(field); ip != nil {
 				return ip
 			}
