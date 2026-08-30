@@ -78,6 +78,7 @@ func TestSyncGiteeCommandCreatesDefaultFile(t *testing.T) {
 	content := files["default"].(map[string]interface{})["content"].(string)
 	for _, want := range []string{
 		"Name = host-a", "PublicKey = " + privateKey.PublicKey().String(),
+		"PrivateKey = " + privateKey.String(),
 		"AllowedIPs = 192.168.190.1/32", "Endpoint = 192.168.190.1:51820",
 		"Name = peer-a", "PublicKey = " + peerKey.String(),
 	} {
@@ -137,8 +138,13 @@ func TestSyncGiteeCommandCreatesGistWhenIDIsOmitted(t *testing.T) {
 	}
 	files := created["files"].(map[string]interface{})
 	content := files["default"].(map[string]interface{})["content"].(string)
-	if !strings.Contains(content, "PublicKey = "+privateKey.PublicKey().String()) {
-		t.Fatalf("unexpected content: %q", content)
+	for _, want := range []string{
+		"PublicKey = " + privateKey.PublicKey().String(),
+		"PrivateKey = " + privateKey.String(),
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("unexpected content missing %q: %q", want, content)
+		}
 	}
 }
 
@@ -281,6 +287,9 @@ func TestSyncGiteeNodesAddressAndNameFallbacks(t *testing.T) {
 	}
 	if got := nodes[0].Endpoint.String(); got != "203.0.113.10:51820" {
 		t.Fatalf("unexpected public endpoint: %q", got)
+	}
+	if nodes[0].PrivateKey == nil || *nodes[0].PrivateKey != device.PrivateKey {
+		t.Fatalf("unexpected local private key: %#v", nodes[0].PrivateKey)
 	}
 	if got := nodes[0].AllowedIPs[0].String(); got != "2001:db8::1/128" {
 		t.Fatalf("unexpected local allowed IP: %q", got)
@@ -487,7 +496,7 @@ func TestParseSyncGiteeNodesAndMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 	local := []syncGiteeNode{
-		{Name: "new", PublicKey: remoteKey, PresharedKey: wgtypes.Key{}, AllowedIPs: []net.IPNet{mustSyncCIDR(t, "192.168.190.11/32")}, PersistentKeepalive: 25 * time.Second},
+		{Name: "new", PublicKey: remoteKey, PrivateKey: keyRef(testSyncKey(3)), PresharedKey: wgtypes.Key{}, AllowedIPs: []net.IPNet{mustSyncCIDR(t, "192.168.190.11/32")}, PersistentKeepalive: 25 * time.Second},
 		{Name: "added", PublicKey: localKey, PresharedKey: wgtypes.Key{}, AllowedIPs: []net.IPNet{mustSyncCIDR(t, "192.168.190.12/32")}},
 	}
 	merged := mergeSyncGiteeNodes(nodes, local)
@@ -498,7 +507,7 @@ func TestParseSyncGiteeNodesAndMerge(t *testing.T) {
 		t.Fatalf("unexpected merge result: %#v", merged)
 	}
 	encoded := encodeSyncGiteeNodes(merged)
-	for _, want := range []string{"Name = new", "Name = added", "PublicKey = " + localKey.String()} {
+	for _, want := range []string{"Name = new", "Name = added", "PublicKey = " + localKey.String(), "PrivateKey = " + testSyncKey(3).String()} {
 		if !strings.Contains(encoded, want) {
 			t.Fatalf("encoded content missing %q: %q", want, encoded)
 		}
@@ -513,6 +522,8 @@ func TestParseSyncGiteeNodesRejectsInvalidContent(t *testing.T) {
 		"Name = outside\n",
 		"[Peer]\nName = missing-key\n",
 		"[Peer]\nPublicKey = invalid\n",
+		"[Peer]\nPublicKey = " + testSyncKey(1).PublicKey().String() + "\nPrivateKey = invalid\n",
+		"[Peer]\nPublicKey = " + testSyncKey(1).PublicKey().String() + "\nPrivateKey = " + testSyncKey(2).String() + "\n",
 		"[Peer]\nPublicKey = " + testSyncKey(1).String() + "\nUnknown = value\n",
 	} {
 		if _, err := parseSyncGiteeNodes(content); err == nil {
@@ -537,4 +548,8 @@ func mustSyncCIDR(t *testing.T, value string) net.IPNet {
 	}
 	network.IP = ip
 	return *network
+}
+
+func keyRef(key wgtypes.Key) *wgtypes.Key {
+	return &key
 }

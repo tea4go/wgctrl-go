@@ -25,6 +25,7 @@ import (
 type syncGiteeNode struct {
 	Name                string
 	PublicKey           wgtypes.Key
+	PrivateKey          *wgtypes.Key
 	PresharedKey        wgtypes.Key
 	AllowedIPs          []net.IPNet
 	Endpoint            *net.UDPAddr
@@ -178,7 +179,7 @@ func syncGiteeNodes(device *wgtypes.Device, addresses []net.IPNet, hostname stri
 		endpointIP = preferredAddress(addresses)
 	}
 	local := syncGiteeNode{
-		Name: hostname, PublicKey: device.PrivateKey.PublicKey(), PresharedKey: wgtypes.Key{},
+		Name: hostname, PublicKey: device.PrivateKey.PublicKey(), PrivateKey: &device.PrivateKey, PresharedKey: wgtypes.Key{},
 		AllowedIPs: allowedIPs, PersistentKeepalive: 25 * time.Second,
 	}
 	if endpointIP != nil && device.ListenPort != 0 {
@@ -341,6 +342,9 @@ func parseSyncGiteeNodes(content string) ([]syncGiteeNode, error) {
 		if !hasPublicKey {
 			return fmt.Errorf("节点缺少 PublicKey")
 		}
+		if node.PrivateKey != nil && node.PrivateKey.PublicKey() != node.PublicKey {
+			return fmt.Errorf("节点 PrivateKey 与 PublicKey 不匹配")
+		}
 		nodes = append(nodes, *node)
 		return nil
 	}
@@ -375,6 +379,12 @@ func parseSyncGiteeNodes(content string) ([]syncGiteeNode, error) {
 				return nil, fmt.Errorf("第 %d 行: PublicKey 无效: %w", lineNo, err)
 			}
 			node.PublicKey, hasPublicKey = v, true
+		case "PrivateKey":
+			v, err := wgtypes.ParseKey(value)
+			if err != nil {
+				return nil, fmt.Errorf("第 %d 行: PrivateKey 无效: %w", lineNo, err)
+			}
+			node.PrivateKey = &v
 		case "PresharedKey":
 			v, err := wgtypes.ParseKey(value)
 			if err != nil {
@@ -441,6 +451,9 @@ func encodeSyncGiteeNodes(nodes []syncGiteeNode) string {
 		fmt.Fprintln(&b, "[Peer]")
 		fmt.Fprintf(&b, "Name = %s\n", node.Name)
 		fmt.Fprintf(&b, "PublicKey = %s\n", node.PublicKey)
+		if node.PrivateKey != nil {
+			fmt.Fprintf(&b, "PrivateKey = %s\n", node.PrivateKey.String())
+		}
 		if len(node.AllowedIPs) > 0 {
 			values := make([]string, len(node.AllowedIPs))
 			for i := range node.AllowedIPs {
