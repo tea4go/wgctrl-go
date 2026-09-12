@@ -30,6 +30,14 @@ func DefaultPath() string {
 		}
 		return "/usr/local/etc/wireguard"
 	default:
+		// 优先返回实际存在的标准目录 /etc/wireguard；若不存在，
+		// 回退到本项目 deploy.sh 的默认部署目录 /opt/wireguard。
+		if _, err := os.Stat("/etc/wireguard"); err == nil {
+			return "/etc/wireguard"
+		}
+		if _, err := os.Stat("/opt/wireguard"); err == nil {
+			return "/opt/wireguard"
+		}
 		return "/etc/wireguard"
 	}
 }

@@ -36,6 +36,36 @@ func TestListPeerKey(t *testing.T) {
 	}
 }
 
+func TestListConfigPath(t *testing.T) {
+	oldDir := listConfigDir
+	t.Cleanup(func() { listConfigDir = oldDir })
+	listConfigDir = func() string { return "/etc/wireguard" }
+
+	if got, want := listConfigPath("wg0"), "/etc/wireguard/wg0.conf"; got != want {
+		t.Fatalf("listConfigPath()=%q, want %q", got, want)
+	}
+}
+
+func TestSortedPeers(t *testing.T) {
+	peers := []wgtypes.Peer{
+		testPeer("10.0.0.10", nil),
+		testPeer("10.0.0.2", nil),
+		testPeer("10.0.0.100", nil),
+		testPeer("10.0.0.1", nil),
+	}
+	got := sortedPeers(peers)
+	want := []string{"10.0.0.1/24", "10.0.0.2/24", "10.0.0.10/24", "10.0.0.100/24"}
+	for i, ip := range want {
+		if got[i].AllowedIPs[0].String() != ip {
+			t.Fatalf("sortedPeers()[%d]=%q, want %q", i, got[i].AllowedIPs[0].String(), ip)
+		}
+	}
+	// 原 slice 不应被修改
+	if peers[0].AllowedIPs[0].String() != "10.0.0.10/24" {
+		t.Fatalf("输入 slice 被修改: peers[0]=%q", peers[0].AllowedIPs[0].String())
+	}
+}
+
 func TestListAllowedIP(t *testing.T) {
 	if got := listAllowedIP(testPeer("192.168.190.100", nil)); got != "192.168.190.100/24" {
 		t.Fatalf("listAllowedIP()=%q", got)
@@ -58,6 +88,9 @@ func TestListEndpoint(t *testing.T) {
 func TestListDevice(t *testing.T) {
 	old := newListClient
 	t.Cleanup(func() { newListClient = old })
+	oldDir := listConfigDir
+	t.Cleanup(func() { listConfigDir = oldDir })
+	listConfigDir = func() string { return "/etc/wireguard" }
 
 	device := &wgtypes.Device{
 		Name:         "wg0",
@@ -78,14 +111,15 @@ func TestListDevice(t *testing.T) {
 		t.Fatalf("code=%d err=%q", code, errOut.String())
 	}
 	want := "interface: wg0\n" +
+		"  config file: /etc/wireguard/wg0.conf\n" +
 		"  public key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n" +
 		"  private key: (hidden)\n" +
 		"  listening port: 40993\n" +
 		"\n" +
 		"peer: 2\n" +
 		"  public key   allowed ips        endpoint\n" +
-		"  AAAAA***AAA= 192.168.190.100/24 101.133.133.127:8357\n" +
-		"  AAAAA***AAA= 192.168.190.0/24   (none)\n"
+		"  AAAAA***AAA= 192.168.190.0/24   (none)\n" +
+		"  AAAAA***AAA= 192.168.190.100/24 101.133.133.127:8357\n"
 	if out.String() != want {
 		t.Fatalf("unexpected output:\n--- got ---\n%s\n--- want ---\n%s", out.String(), want)
 	}

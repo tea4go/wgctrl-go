@@ -3,12 +3,21 @@ package main
 import (
 	"fmt"
 	"io"
+	"path/filepath"
+	"sort"
 
 	"golang.zx2c4.com/wireguard/wgctrl"
+	"golang.zx2c4.com/wireguard/wgctrl/internal/wgmeta"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 var newListClient = func() (showClient, error) { return wgctrl.New() }
+var listConfigDir = wgmeta.DefaultPath
+
+// listConfigPath 返回指定接口对应的 WireGuard 配置文件路径。
+func listConfigPath(iface string) string {
+	return filepath.Join(listConfigDir(), iface+".conf")
+}
 
 // list 输出所有（或指定）WireGuard 接口的简介信息。
 func list(args []string, _ io.Reader, out, errOut io.Writer) int {
@@ -63,6 +72,9 @@ func prettyList(w io.Writer, d *wgtypes.Device) error {
 	if _, err := fmt.Fprintf(w, "interface: %s\n", d.Name); err != nil {
 		return err
 	}
+	if _, err := fmt.Fprintf(w, "  config file: %s\n", listConfigPath(d.Name)); err != nil {
+		return err
+	}
 	if d.HasPublicKey {
 		if _, err := fmt.Fprintf(w, "  public key: %s\n", d.PublicKey); err != nil {
 			return err
@@ -83,13 +95,36 @@ func prettyList(w io.Writer, d *wgtypes.Device) error {
 		if _, err := fmt.Fprintf(w, "  %-12s %-18s %s\n", "public key", "allowed ips", "endpoint"); err != nil {
 			return err
 		}
-		for _, p := range d.Peers {
+		for _, p := range sortedPeers(d.Peers) {
 			if _, err := fmt.Fprintf(w, "  %-12s %-18s %s\n", listPeerKey(p.PublicKey), listAllowedIP(p), listEndpoint(p)); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// sortedPeers 返回按首个允许 IP 的第 4 段（IPv4 最后一个八位组）数字升序排列的
+// peers 副本；无允许 IP 或非 IPv4 的对等节点排在最后。
+func sortedPeers(peers []wgtypes.Peer) []wgtypes.Peer {
+	out := make([]wgtypes.Peer, len(peers))
+	copy(out, peers)
+	sort.SliceStable(out, func(i, j int) bool {
+		return listPeerLastOctet(out[i]) < listPeerLastOctet(out[j])
+	})
+	return out
+}
+
+// listPeerLastOctet 返回对等节点首个允许 IP 的最后一个八位组（IPv4 第 4 段），
+// 用于数字升序排序；无允许 IP 或非 IPv4 时返回 256 以确保排在最后。
+func listPeerLastOctet(p wgtypes.Peer) int {
+	if len(p.AllowedIPs) == 0 {
+		return 256
+	}
+	if v4 := p.AllowedIPs[0].IP.To4(); v4 != nil {
+		return int(v4[3])
+	}
+	return 256
 }
 
 // listPeerKey 返回对等节点公钥的摘要形式：前 5 个字符 + "***" + 后 4 个字符。
