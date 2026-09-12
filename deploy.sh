@@ -17,7 +17,7 @@ set -euo pipefail
 
 # 默认远程连接信息
 REMOTE_USER="${REMOTE_USER:-tony}"
-REMOTE_HOST="${REMOTE_HOST:-8.210.19.98}"
+REMOTE_HOST="${REMOTE_HOST:-192.168.193.78}"
 REMOTE_PORT="${REMOTE_PORT:-6443}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/wireguard}"
 
