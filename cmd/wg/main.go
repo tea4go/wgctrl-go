@@ -75,7 +75,10 @@ func run(args []string, in io.Reader, out, errOut io.Writer) int {
 		return 0
 	}
 	if opts.showHelp {
-		_, _ = io.WriteString(out, usage)
+		fmt.Fprintln(out, "用法: wg <命令> [<参数>]")
+		fmt.Fprint(out, pflag.CommandLine.FlagUsages())
+		fmt.Fprintln(out)
+		fmt.Fprint(out, usage)
 		return 0
 	}
 
