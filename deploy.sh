@@ -6,9 +6,11 @@
 # 「本地动态链接二进制因 glibc 版本不兼容而无法在远程启动」的问题。
 #
 # 用法:
-#   ./deploy.sh                                  # 默认 tony@8.210.19.98:6443 -> /opt/wireguard
+#   ./deploy.sh                                  # 默认 tony@192.168.193.78:6443 -> /opt/wireguard
 #   ./deploy.sh --host 1.2.3.4 --user root       # 覆盖主机与用户
+#   ./deploy.sh --port 2222                      # 覆盖 SSH 端口
 #   ./deploy.sh --dir /srv/wireguard             # 覆盖安装目录
+#   ./deploy.sh --help                           # 查看本帮助
 #
 # 远程连接信息也可用同名环境变量覆盖:
 #   REMOTE_HOST / REMOTE_PORT / REMOTE_USER / INSTALL_DIR
@@ -21,6 +23,11 @@ REMOTE_HOST="${REMOTE_HOST:-192.168.193.78}"
 REMOTE_PORT="${REMOTE_PORT:-6443}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/wireguard}"
 
+# 打印脚本开头注释块作为帮助文本（去除行首 "# " 前缀）
+usage() {
+  awk 'NR > 1 { if (/^#/) { sub(/^# ?/, ""); print } else { exit } }' "$0"
+}
+
 # 解析命令行参数（覆盖默认值）
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -28,10 +35,7 @@ while [[ $# -gt 0 ]]; do
     --port) REMOTE_PORT="$2"; shift 2 ;;
     --user) REMOTE_USER="$2"; shift 2 ;;
     --dir)  INSTALL_DIR="$2"; shift 2 ;;
-    -h|--help)
-      sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
-      exit 0
-      ;;
+    -h|--help) usage; exit 0 ;;
     *) echo "未知参数: $1（--help 查看用法）" >&2; exit 2 ;;
   esac
 done
