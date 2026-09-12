@@ -1,4 +1,4 @@
-wg
+cmd/wg/wg
 wgd
 wgc
 *.test
