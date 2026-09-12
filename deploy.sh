@@ -51,7 +51,7 @@ LDFLAGS="-s -w -X main.BuildTime=$BUILD_TIME"
 echo "==> 静态编译（CGO_ENABLED=0 / linux / amd64）..."
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o "$BUILD_DIR/wg"       ./cmd/wg
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$LDFLAGS" -o "$BUILD_DIR/wgd"      ./cmd/wgd
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w"  -o "$BUILD_DIR/wg-quick"   ./cmd/wg-quick
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w"    -o "$BUILD_DIR/wg-quick" ./cmd/wg-quick
 
 echo "==> 产物校验（应为 statically linked）..."
 file "$BUILD_DIR"/wg "$BUILD_DIR"/wgd "$BUILD_DIR"/wg-quick | sed 's/^/    /'
